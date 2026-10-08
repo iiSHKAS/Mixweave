@@ -1,6 +1,6 @@
 # Mixweave
 
-An audio mixer for Linux with application routing, channel controls, and independent personal and stream mixes.
+An audio mixer for Linux with application routing, microphone noise suppression, and independent personal and stream mixes.
 
 ## Channel Controls
 
@@ -30,6 +30,12 @@ Mixweave switches to the linked profile when the application starts and returns 
 
 Shape your audio with the equalizer, choose a built-in preset, or create and save your own.
 
+## Microphone Controls
+
+- **Noise suppression:** Reduce microphone background noise using RNNoise.
+- **Mute:** Click the microphone mute button to toggle mute.
+- **Monitoring:** Hold the mute button to listen to your microphone; release it to stop.
+
 ## Keyboard Shortcuts
 
 Assign global shortcuts to raise or lower volume and toggle mute.
@@ -46,19 +52,33 @@ Overlays appear when you use volume or mute shortcuts, including in fullscreen. 
 
 ![Mixweave — Volume Overlays](image/volume-overlays.png)
 
-## Microphone Monitoring
-
-Click the microphone mute button to toggle mute, or hold it to monitor your microphone until you release it.
-
 ## Desktop Integration
 
 - Light, dark, and system themes.
 - System tray support.
 - Options to launch at login and start minimized.
 
-## Compatibility & Updates
+## Languages
 
-- **GNOME Wayland:** Global shortcuts supported.
-- **KDE Wayland:** Global shortcut support planned.
-- **X11:** Global shortcut support pending verification.
-- **Automatic updates:** Currently supported for AppImage builds only.
+Currently available in:
+
+- English
+- Russian — Русский
+- Arabic — العربية
+- Simplified Chinese — 简体中文
+
+Choose a language in Settings or follow your system language.
+
+## Compatibility
+
+Global keyboard shortcuts and volume overlays support **X11**.
+
+Due to current Wayland integration limitations, these features are supported only on **GNOME under Wayland**. Support for **KDE Plasma under Wayland** is planned.
+
+## Automatic Updates
+
+Automatic updates currently support **AppImage builds only**.
+
+## Acknowledgments
+
+Mixweave is based on [Sonux](https://github.com/Haxinpro/Sonux) by [Haxinpro](https://github.com/Haxinpro). Thanks to the original project and its contributors for providing the foundation for Mixweave.
