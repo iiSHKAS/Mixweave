@@ -1,84 +1,116 @@
-# Mixweave
+<h1 align="center">Mixweave</h1>
 
-An audio mixer for Linux with application routing, microphone noise suppression, and independent personal and stream mixes.
+<p align="center">
+  <strong>Your audio. Your mix. Your stream.</strong>
+</p>
+
+Mixweave is an audio mixer for Linux, built on PipeWire. Route applications to dedicated channels, reduce microphone noise, and control what you hear separately from what your audience hears.
+
+Mixweave is based on [Sonux](https://github.com/Haxinpro/Sonux) by [Haxinpro](https://github.com/Haxinpro). Thanks to the original project and its contributors for providing the foundation for Mixweave.
+
+<p align="center">
+  <a href="https://github.com/iiSHKAS/Mixweave/releases/latest"><strong>Download</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#compatibility">Compatibility</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/iiSHKAS/Mixweave/issues">Report an issue</a>
+</p>
+
+---
 
 ## Channel Controls
 
-Adjust volume and mute individual channels, then assign applications to the channels you want. In Normal Mode, you can also select an audio output for each channel.
+Control volume and mute for individual channels, and assign games, voice chat, music, and other applications to the channels you want. In **Normal Mode**, each channel can use its own audio output.
 
-![Mixweave — Normal Mode](image/normal-mode.png)
+![Mixweave in Normal Mode, showing application channels and microphone controls](https://raw.githubusercontent.com/iiSHKAS/Mixweave/main/image/normal-mode.png)
 
 ## Streamer Mode
 
-Manage two independent mixes: what you hear and what your audience hears. Each channel has separate Personal and Stream volume and mute controls.
+Manage two independent mixes: **Personal** for what you hear and **Stream** for what your audience hears. Each channel has separate volume and mute controls for both mixes.
 
-Select **Streamer Mode** as the audio source in your streaming software. Use the stream monitoring button on Master to preview what your audience will hear.
+Keep music in your headphones while muting it for your stream, or lower game audio for your audience without changing your own listening volume.
 
-![Mixweave — Streamer Mode](image/streamer-mode.png)
+Select **Streamer Mode** as the audio source in your streaming software. The stream monitoring button on **Master** lets you preview the audience's mix.
+
+![Mixweave in Streamer Mode, with separate Personal and Stream controls](https://raw.githubusercontent.com/iiSHKAS/Mixweave/main/image/streamer-mode.png)
 
 ## Application Routing
 
-The Apps page lists applications that have produced audio and lets you assign each one to a channel. Assignments are remembered across restarts.
+The **Apps** page lists applications that have produced audio and lets you assign each one to a channel. Assignments are remembered across restarts.
 
 ## Automatic Profiles
 
-Save your mixer configuration in profiles and link them to application or game executables.
+Save mixer configurations for games, calls, music, or streaming, and link them to application or game executables.
 
-Mixweave switches to the linked profile when the application starts and returns to Default when it closes. If multiple linked applications are running, the most recently started one takes priority.
+Mixweave switches profiles automatically when a linked application starts. If several linked applications are running, the most recently started one takes priority. When none remain running, Mixweave returns to **Default**.
 
 ## Equalizer & Presets
 
-Shape your audio with the equalizer, choose a built-in preset, or create and save your own.
+Shape channel audio with the equalizer, choose a built-in preset, or create and save your own.
 
 ## Microphone Controls
 
-- **Noise suppression:** Reduce microphone background noise using RNNoise.
-- **Mute:** Click the microphone mute button to toggle mute.
-- **Monitoring:** Hold the mute button to listen to your microphone; release it to stop.
+| Control | Function |
+| :--- | :--- |
+| **Noise suppression** | Reduce background noise with RNNoise. |
+| **Mute** | Click the microphone mute button to toggle mute. |
+| **Monitoring** | Hold the mute button to listen to your microphone; release it to stop. |
 
-## Keyboard Shortcuts
+## Keyboard Shortcuts & Volume Overlays
 
-Assign global shortcuts to raise or lower volume and toggle mute.
+Assign global shortcuts for volume up, volume down, and mute. Each volume adjustment changes the level by **5%**, and holding a volume shortcut repeats the adjustment. An optional setting extends the volume range to **150%**.
 
-- Each press changes volume by 5%.
-- Holding a volume shortcut repeats the adjustment.
-- An optional setting allows volume up to 150%.
+Choose from three overlay styles: **Segments**, **Vertical Fader**, and **Waves**. Overlays display the channel name and add a **Stream** label when adjusting stream audio. They can appear over fullscreen applications on supported desktops.
 
-## Volume Overlays
-
-Choose from three styles: **Segments**, **Vertical Fader**, and **Waves**.
-
-Overlays appear when you use volume or mute shortcuts, including in fullscreen. They display the channel name and add a **Stream** label when adjusting stream audio.
-
-![Mixweave — Volume Overlays](image/volume-overlays.png)
+![Mixweave volume overlays in Segments, Vertical Fader, and Waves styles](https://raw.githubusercontent.com/iiSHKAS/Mixweave/main/image/volume-overlays.png)
 
 ## Desktop Integration
 
-- Light, dark, and system themes.
-- System tray support.
-- Options to launch at login and start minimized.
+| Appearance | Desktop | Startup |
+| :--- | :--- | :--- |
+| Light, dark, and system themes | System tray support | Launch at login and start minimized |
 
 ## Languages
 
-Currently available in:
+| English | Arabic | Russian | Simplified Chinese |
+| :---: | :---: | :---: | :---: |
+| **English** | **العربية** | **Русский** | **简体中文** |
 
-- English
-- Russian — Русский
-- Arabic — العربية
-- Simplified Chinese — 简体中文
+Choose a language in **Settings** or follow your system language.
 
-Choose a language in Settings or follow your system language.
+---
+
+## Download
+
+Get **`Mixweave.AppImage`** from the [latest release](https://github.com/iiSHKAS/Mixweave/releases/latest), make it executable, and launch it:
+
+```bash
+chmod +x Mixweave.AppImage
+./Mixweave.AppImage
+```
+
+> [!NOTE]
+> Automatic updates are available for **AppImage builds only** and can be managed in **Settings → Updates**.
 
 ## Compatibility
 
-Global keyboard shortcuts and volume overlays support **X11**.
+Mixweave requires **PipeWire** with **PulseAudio compatibility**, **WirePlumber 0.5 or newer**, and **`pactl`**.
 
-Due to current Wayland integration limitations, these features are supported only on **GNOME under Wayland**. Support for **KDE Plasma under Wayland** is planned.
+**Global shortcuts & volume overlays**
 
-## Automatic Updates
+| Desktop session | Support |
+| :--- | :--- |
+| **X11** | Supported |
+| **GNOME on Wayland** | Supported |
+| **KDE Plasma on Wayland** | Planned |
+| **Other Wayland desktops** | Not currently supported |
 
-Automatic updates currently support **AppImage builds only**.
+GNOME overlays use a bundled Shell extension. You may need to log out and back in after its first installation or an update.
 
-## Acknowledgments
+---
 
-Mixweave is based on [Sonux](https://github.com/Haxinpro/Sonux) by [Haxinpro](https://github.com/Haxinpro). Thanks to the original project and its contributors for providing the foundation for Mixweave.
+## Credits & License
+
+Mixweave builds on **[Sonux](https://github.com/Haxinpro/Sonux)** by **[Haxinpro](https://github.com/Haxinpro)**, with foundations in **[Sink](https://github.com/NC1107/sink)** by **[NC1107](https://github.com/NC1107)**. Credit and thanks go to the original authors and contributors whose work made this project possible.
+
+Mixweave is licensed under **GPL-3.0-only**. Bundled third-party components and assets retain their respective licenses.
