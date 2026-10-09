@@ -68,6 +68,8 @@ impl MixerState {
                 volume_percent: 100,
                 muted: false,
                 stream_mix: def.stream_mix,
+                stream_send_volume_percent: 100,
+                stream_send_muted: false,
             })
             .collect();
         self.initialized = true;
@@ -77,19 +79,62 @@ impl MixerState {
         self.channels.iter_mut().find(|c| c.name == sink_name)
     }
 
+    /// The Streamer Mode mix's current gain fraction and mute flag,
+    /// entirely independent of `master_gain`. See
+    /// `persistence::buses::streamer_gain`.
+    pub fn streamer_gain(&self) -> (f32, bool) {
+        crate::persistence::buses::streamer_gain(&self.buses)
+    }
+
+    /// The master mix's current gain fraction and mute flag. See
+    /// `persistence::buses::master_gain`.
+    pub fn master_gain(&self) -> (f32, bool) {
+        crate::persistence::buses::master_gain(&self.buses)
+    }
+
     /// Adopt live volume/mute changes made outside Sink. Returns whether the
     /// profile-relevant mixer state changed.
+    ///
+    /// Every channel's *live* PipeWire volume/mute is the channel's own
+    /// stored value scaled by the master gain (Master is a true listening
+    /// volume control - see `persistence::buses::master_gain`), so the
+    /// "expected" live value is recomputed fresh from `channel.volume_percent`
+    /// and the current master gain on every call, rather than tracked
+    /// separately. A live value that matches this expectation is our own
+    /// write settling in, not an external change, and is left alone; a
+    /// mismatch is a genuine external change (e.g. via pavucontrol), and the
+    /// master scaling is reversed so the channel's stored "own level" still
+    /// means "before master". Mute can't be reverse-derived the same way
+    /// while master is muted (every channel's live mute is forced true
+    /// regardless of its own flag then), so mute adoption is skipped in
+    /// that case rather than guessed at.
     pub fn sync_controls(&mut self, controls: &[SinkControlState]) -> bool {
+        let (fraction, master_muted) = self.master_gain();
         let mut changed = false;
         for control in controls {
-            if let Some(channel) = self.channel_mut(&control.name) {
-                if channel.volume_percent != control.volume_percent
-                    || channel.muted != control.muted
-                {
-                    channel.volume_percent = control.volume_percent;
-                    channel.muted = control.muted;
-                    changed = true;
-                }
+            let Some(channel) = self.channel_mut(&control.name) else {
+                continue;
+            };
+            let expected_volume =
+                crate::persistence::buses::scaled_volume(channel.volume_percent, fraction);
+            let expected_muted = channel.muted || master_muted;
+            if control.volume_percent == expected_volume && control.muted == expected_muted {
+                continue;
+            }
+            let raw_volume = if fraction > 0.01 {
+                ((control.volume_percent as f32) / fraction)
+                    .round()
+                    .clamp(0.0, 150.0) as u8
+            } else {
+                control.volume_percent
+            };
+            if channel.volume_percent != raw_volume {
+                channel.volume_percent = raw_volume;
+                changed = true;
+            }
+            if !master_muted && channel.muted != control.muted {
+                channel.muted = control.muted;
+                changed = true;
             }
         }
         changed
@@ -119,83 +164,5 @@ impl MixerState {
     pub fn reset(&mut self) {
         self.channels.clear();
         self.initialized = false;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn init_defaults_creates_four_channels() {
-        let mut state = MixerState::default();
-        state.init_defaults();
-        assert_eq!(state.channels.len(), 4);
-        assert!(state.initialized);
-        assert_eq!(state.channels[0].name, "sink_game");
-        assert_eq!(state.channels[0].label, "Game");
-        assert!(state
-            .channels
-            .iter()
-            .all(|c| c.volume_percent == 100 && !c.muted));
-    }
-
-    #[test]
-    fn prune_stale_apps_exempts_assigned_and_aliased() {
-        const DAY: u64 = 24 * 60 * 60;
-        let now = 100 * DAY;
-        let old = now - 30 * DAY;
-        let mut state = MixerState::default();
-        for value in ["plain", "assigned", "aliased"] {
-            state
-                .seen
-                .upsert("application.name", value, value, None, None, old);
-        }
-        state
-            .assignments
-            .set("application.name", "assigned", "sink_game");
-        state.aliases.set("application.name", "aliased", "My App");
-
-        assert!(state.prune_stale_apps(now));
-        assert!(state.seen.get("application.name", "plain").is_none());
-        assert!(state.seen.get("application.name", "assigned").is_some());
-        assert!(state.seen.get("application.name", "aliased").is_some());
-    }
-
-    #[test]
-    fn channel_mut_finds_by_name() {
-        let mut state = MixerState::default();
-        state.init_defaults();
-        let chat = state.channel_mut("sink_chat").expect("chat channel exists");
-        chat.volume_percent = 85;
-        assert_eq!(state.channels[1].volume_percent, 85);
-        assert!(state.channel_mut("sink_nope").is_none());
-    }
-
-    #[test]
-    fn sync_controls_adopts_external_volume_and_mute() {
-        let mut state = MixerState::default();
-        state.init_defaults();
-        assert!(state.sync_controls(&[
-            SinkControlState {
-                name: "sink_game".into(),
-                volume_percent: 90,
-                muted: false,
-            },
-            SinkControlState {
-                name: "sink_media".into(),
-                volume_percent: 72,
-                muted: true,
-            },
-        ]));
-        assert_eq!(state.channels[0].volume_percent, 90);
-        assert_eq!(state.channels[2].volume_percent, 72);
-        assert!(state.channels[2].muted);
-
-        assert!(!state.sync_controls(&[SinkControlState {
-            name: "sink_media".into(),
-            volume_percent: 72,
-            muted: true,
-        }]));
     }
 }

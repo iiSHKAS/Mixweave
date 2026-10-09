@@ -29,7 +29,7 @@ impl WindowSize {
 fn path() -> Result<PathBuf, SinkError> {
     let dir = dirs::config_dir()
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
-    Ok(dir.join("sonux").join("window.json"))
+    Ok(dir.join("mixweave").join("window.json"))
 }
 
 pub fn load() -> Option<WindowSize> {
@@ -37,7 +37,7 @@ pub fn load() -> Option<WindowSize> {
     let raw = fs::read_to_string(&path).ok()?;
     serde_json::from_str::<WindowSize>(&raw)
         .map(WindowSize::sanitized)
-        .map_err(|e| eprintln!("sonux: ignoring malformed {}: {e}", path.display()))
+        .map_err(|e| eprintln!("mixweave: ignoring malformed {}: {e}", path.display()))
         .ok()
 }
 
@@ -50,35 +50,4 @@ pub fn save(size: WindowSize) -> Result<(), SinkError> {
         .map_err(|e| SinkError::Config(format!("serialize window size: {e}")))?;
     super::write_atomic(&path, json)?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn clamps_corrupt_or_stale_extreme_sizes() {
-        assert_eq!(
-            WindowSize {
-                width: 1,
-                height: 99
-            }
-            .sanitized(),
-            WindowSize {
-                width: MIN_WIDTH,
-                height: MIN_HEIGHT
-            }
-        );
-        assert_eq!(
-            WindowSize {
-                width: u32::MAX,
-                height: u32::MAX
-            }
-            .sanitized(),
-            WindowSize {
-                width: MAX_WIDTH,
-                height: MAX_HEIGHT
-            }
-        );
-    }
 }

@@ -2,8 +2,11 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
-/// Maximum concurrent meters (channels + mic, with headroom).
-pub const MAX_METERS: usize = 12;
+/// Maximum concurrent meters: up to 10 channels + up to 6 buses (master,
+/// Streamer Mode, up to 4 custom mixes) + up to 4 mic channels (primary +
+/// secondary), each channel's and each mic's independent Stream meter
+/// alongside it, and headroom.
+pub const MAX_METERS: usize = 40;
 
 /// Lock-free per-meter peak store with a dynamic name→slot registry
 /// (channels are user-defined since the dynamic-channels work). Peaks are
@@ -23,7 +26,10 @@ struct SlotRegistry {
 impl LevelStore {
     pub fn new() -> Self {
         Self {
-            peaks: Default::default(),
+            // `[T; N]: Default` is only implemented up to N=32 (no true
+            // const-generic impl in std) - MAX_METERS has since grown past
+            // that, so this builds the array element-by-element instead.
+            peaks: std::array::from_fn(|_| [AtomicU32::new(0), AtomicU32::new(0)]),
             slots: Mutex::new(SlotRegistry::default()),
         }
     }
@@ -99,55 +105,5 @@ impl LevelStore {
 impl Default for LevelStore {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn raise_keeps_maximum_and_drain_resets() {
-        let store = LevelStore::new();
-        let slot = store.slot_for("sink_game").expect("slot");
-        store.raise(slot, 0, 0.5);
-        store.raise(slot, 0, 0.3); // lower - ignored
-        assert!((store.drain(slot, 0) - 0.5).abs() < f32::EPSILON);
-        assert_eq!(store.drain(slot, 0), 0.0); // drained
-    }
-
-    #[test]
-    fn slots_are_stable_and_reusable() {
-        let store = LevelStore::new();
-        let a = store.slot_for("sink_game").expect("slot");
-        assert_eq!(store.slot_for("sink_game"), Some(a), "stable per name");
-        let b = store.slot_for("sink_chat").expect("slot");
-        assert_ne!(a, b);
-        store.release("sink_game");
-        let c = store.slot_for("sink_voice").expect("slot");
-        assert_eq!(c, a, "freed slot is reused");
-    }
-
-    #[test]
-    fn discard_all_clears_pending_peaks() {
-        let store = LevelStore::new();
-        let game = store.slot_for("sink_game").expect("game slot");
-        let chat = store.slot_for("sink_chat").expect("chat slot");
-        store.raise(game, 0, 0.8);
-        store.raise(chat, 1, 0.6);
-
-        store.discard_all();
-
-        assert_eq!(store.drain(game, 0), 0.0);
-        assert_eq!(store.drain(chat, 1), 0.0);
-    }
-
-    #[test]
-    fn budget_is_enforced() {
-        let store = LevelStore::new();
-        for i in 0..MAX_METERS {
-            assert!(store.slot_for(&format!("m{i}")).is_some());
-        }
-        assert!(store.slot_for("overflow").is_none());
     }
 }

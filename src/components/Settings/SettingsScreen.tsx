@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
+import { UpdateSettings } from "../Updates";
+import { useEffect, useRef, useState, type CSSProperties, type ElementType, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { useMixerStore } from "../../store/mixer";
 import {
   DEFAULT_SHORTCUTS,
-  shortcutFromKeyboardEvent,
   useShortcutSettings,
   type ShortcutAction,
 } from "../../store/shortcuts";
 import { useTheme, THEMES } from "../../store/theme";
-import { restartApplication } from "../../hooks/useGlobalShortcuts";
+import { OSD_STYLES, useOsdStyle, type OsdStyle } from "../../store/osdStyle";
+import { OSD_POSITIONS, useOsdPosition, type OsdPosition } from "../../store/osdPosition";
+import { restartApplication, showOsd } from "../../hooks/useGlobalShortcuts";
 import { stashRestoreWarning } from "../../lib/restoreWarning";
 import { useI18n, type TranslationKey } from "../../i18n";
 import { reloadLanguagePacks, type LanguagePackCatalog } from "../../languagePacks";
@@ -18,9 +20,9 @@ import { Ms } from "../Icons";
 import { ConfirmModal } from "../ConfirmModal";
 import { HelpInfo } from "../HelpInfo";
 import { MenuItem } from "../MenuItem";
-import { Modal } from "../Modal";
 import { Popover } from "../Popover";
 import { ProcessingInfo } from "../ProcessingInfo";
+import { ShortcutRecorderInput } from "../ShortcutRecorderInput";
 import { Toggle } from "../Toggle";
 
 interface DefaultDevices {
@@ -40,16 +42,28 @@ interface RestoreBackupResult {
 }
 
 const BACKUP_FRONTEND_KEYS = [
-  "sonux-theme",
-  "sonux-language",
-  "sonux-global-shortcuts",
-  "sonux-active-eq-presets",
-  "sonux-profile-section-visibility",
+  "mixweave-theme",
+  "mixweave-language",
+  "mixweave-global-shortcuts",
+  "mixweave-active-eq-presets",
+  "mixweave-profile-section-visibility",
 ] as const;
+
+// A backup made before the Mixweave rename stored these same values under
+// their old "sonux-" key names - read as a fallback when exporting (so a
+// value never re-saved since upgrading is still captured) and accepted when
+// restoring an older backup file.
+const LEGACY_BACKUP_FRONTEND_KEYS: Record<(typeof BACKUP_FRONTEND_KEYS)[number], string> = {
+  "mixweave-theme": "sonux-theme",
+  "mixweave-language": "sonux-language",
+  "mixweave-global-shortcuts": "sonux-global-shortcuts",
+  "mixweave-active-eq-presets": "sonux-active-eq-presets",
+  "mixweave-profile-section-visibility": "sonux-profile-section-visibility",
+};
 
 function frontendBackupState(): Record<string, string> {
   return Object.fromEntries(BACKUP_FRONTEND_KEYS.flatMap((key) => {
-    const value = localStorage.getItem(key);
+    const value = localStorage.getItem(key) ?? localStorage.getItem(LEGACY_BACKUP_FRONTEND_KEYS[key]);
     return value === null ? [] : [[key, value]];
   }));
 }
@@ -57,11 +71,16 @@ function frontendBackupState(): Record<string, string> {
 function applyFrontendBackupState(state: Record<string, string>) {
   for (const key of BACKUP_FRONTEND_KEYS) {
     localStorage.removeItem(key);
+    localStorage.removeItem(LEGACY_BACKUP_FRONTEND_KEYS[key]);
   }
   for (const [key, value] of Object.entries(state)) {
     if ((BACKUP_FRONTEND_KEYS as readonly string[]).includes(key)) {
       localStorage.setItem(key, value);
+      continue;
     }
+    const current = (Object.keys(LEGACY_BACKUP_FRONTEND_KEYS) as (typeof BACKUP_FRONTEND_KEYS)[number][])
+      .find((mapped) => LEGACY_BACKUP_FRONTEND_KEYS[mapped] === key);
+    if (current) localStorage.setItem(current, value);
   }
 }
 
@@ -87,14 +106,6 @@ function fileName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
-type LabelStyle = "plain" | "suffix" | "prefix";
-
-const LABEL_STYLES: { value: LabelStyle; label: TranslationKey; example: TranslationKey }[] = [
-  { value: "plain", label: "settings.naming.plain", example: "settings.naming.plainExample" },
-  { value: "suffix", label: "settings.naming.suffix", example: "settings.naming.suffixExample" },
-  { value: "prefix", label: "settings.naming.prefix", example: "settings.naming.prefixExample" },
-];
-
 const METER_MODES: { value: MeterMode; label: TranslationKey; detail: TranslationKey }[] = [
   { value: "monitor", label: "settings.meters.monitor.label", detail: "settings.meters.monitor.detail" },
   { value: "fps_144", label: "settings.meters.fps144.label", detail: "settings.meters.fps144.detail" },
@@ -111,12 +122,120 @@ const SHORTCUT_ROWS: { action: ShortcutAction; label: TranslationKey; icon: stri
   { action: "restart_app", label: "settings.shortcuts.restart", icon: "restart_alt" },
 ];
 
-function SettingTitle({ title, description }: Readonly<{ title: string; description?: string }>) {
+/** One titled card of settings. */
+function SettingsSection({ title, children, preserve = false }: Readonly<{ title: string; children: ReactNode; preserve?: boolean }>) {
   return (
-    <div className="rtitle">
-      <span>{title}</span>
-      {description && <HelpInfo label={title} text={description} />}
-    </div>
+    <section className={"settings-section" + (preserve ? " preserve-settings" : "")}>
+      <div className="section-head">
+        <h2 className="section-title">{title}</h2>
+      </div>
+      <div className="card settings-card">{children}</div>
+    </section>
+  );
+}
+
+/** A setting: icon tile, title with its explanation underneath, control on the right.
+ * `stacked` puts a wide control (like the theme picker) under the text instead of beside it. */
+function SettingRow({
+  icon,
+  title,
+  description,
+  help,
+  sub = false,
+  disabled = false,
+  stacked = false,
+  as: Tag = "div",
+  className,
+  titleId,
+  children,
+}: Readonly<{
+  icon: string;
+  title: string;
+  description?: string;
+  /** Extra info button shown next to the title. */
+  help?: ReactNode;
+  /** A setting that only applies while the one above it is on. */
+  sub?: boolean;
+  disabled?: boolean;
+  stacked?: boolean;
+  as?: ElementType;
+  className?: string;
+  titleId?: string;
+  children?: ReactNode;
+}>) {
+  const classes = ["setting-row", sub && "sub", disabled && "disabled", stacked && "stacked", className]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <Tag className={classes}>
+      <span className="setting-icon">
+        <Ms name={icon} />
+      </span>
+      <div className="setting-copy">
+        <div className="setting-title">
+          <span id={titleId}>{title}</span>
+          {help}
+        </div>
+        {description && <div className="setting-desc">{description}</div>}
+      </div>
+      {children != null && <div className="setting-control">{children}</div>}
+    </Tag>
+  );
+}
+
+/** Miniature mixer drawn in one theme's real palette, for the theme picker. */
+function ThemeMock({ tone, split = false }: Readonly<{ tone: "original" | "dark"; split?: boolean }>) {
+  return (
+    <span className={"theme-mock" + (split ? " split" : "")} data-tone={tone}>
+      <span className="theme-mock-side"><i /><i /><i /></span>
+      <span className="theme-mock-main">
+        {[62, 38, 78].map((level) => (
+          <span key={level} className="theme-mock-strip">
+            <span className="theme-mock-track" style={{ "--level": `${level}%` } as CSSProperties}>
+              <b />
+            </span>
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+/** A screen silhouette with the popup drawn at its physical screen position. */
+function OsdPositionIcon({ position }: Readonly<{ position: OsdPosition }>) {
+  const x = position.endsWith("right") ? 23 : 7;
+  const y = position.startsWith("top") ? 7 : position.startsWith("bottom") ? 19 : 13;
+  return (
+    <svg className="osd-position-icon" width="40" height="32" viewBox="0 0 40 32" fill="none" aria-hidden="true">
+      <rect className="osd-position-screen" x="2" y="2" width="36" height="26" rx="5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M16 31h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
+      <rect x={x} y={y} width="10" height="5" rx="2" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** Miniature of one shortcut-popup look, for the picker. */
+function OsdMini({ style }: Readonly<{ style: OsdStyle }>) {
+  const count = style === "segments" ? 14 : style === "waves" ? 16 : 0;
+  return (
+    <span className={`osd-mini ${style}`} aria-hidden="true">
+      {style === "fader" ? (
+        <>
+          <b className="mini-dot" />
+          <b className="mini-rail"><b className="mini-fill" /><b className="mini-knob" /></b>
+          <b className="mini-num" />
+        </>
+      ) : (
+        <>
+          <b className="mini-top"><b className="mini-tile" /><b className="mini-num" /></b>
+          <b className="mini-bars">
+            {Array.from({ length: count }, (_, i) => (
+              <i key={i} className={i < Math.round(count * 0.72) ? "on" : undefined} style={{ "--h": `${style === "waves" ? 35 + ((i * 37) % 60) : 100}%` } as CSSProperties} />
+            ))}
+          </b>
+        </>
+      )}
+    </span>
   );
 }
 
@@ -141,16 +260,10 @@ function DeviceRow({
   const currentDesc = devices.find((d) => d.name === current)?.description ?? current ?? "-";
 
   return (
-    <div className="row">
-      <div className="ricon">
-        <Ms name={icon} />
-      </div>
-      <div className="rmain">
-        <SettingTitle title={title} description={sub} />
-      </div>
+    <SettingRow icon={icon} title={title} description={sub}>
       <div style={{ position: "relative" }}>
         <button type="button" className="select device-select" onClick={() => setOpen((o) => !o)}>
-          <span className="device-select-name">{currentDesc}</span>
+          <span className="device-select-name" title={currentDesc}>{currentDesc}</span>
           <Ms name="expand_more" />
         </button>
         <Popover open={open} onClose={() => setOpen(false)} side="bottom" align="end">
@@ -170,24 +283,29 @@ function DeviceRow({
           ))}
         </Popover>
       </div>
-    </div>
+    </SettingRow>
   );
 }
 
 export function SettingsScreen() {
-  const { availableLocales, locale, preference, setPreference, t } = useI18n();
+  const { availableLocales, locale, systemLocale, preference, setPreference, t } = useI18n();
   const { theme, setTheme } = useTheme();
+  const osdStyle = useOsdStyle((state) => state.style);
+  const setOsdStyle = useOsdStyle((state) => state.setStyle);
+  const osdPosition = useOsdPosition((state) => state.position);
+  const setOsdPosition = useOsdPosition((state) => state.setPosition);
+  const [osdPositionOpen, setOsdPositionOpen] = useState(false);
   const [autostart, setAutostart] = useState<boolean | null>(null);
-  const [startMinimized, setStartMinimized] = useState(false);
+  const [startMinimized, setStartMinimized] = useState<boolean | null>(null);
+  const [startupSaving, setStartupSaving] = useState(false);
+  const startupSavingRef = useRef(false);
   const [version, setVersion] = useState("");
   const [defaults, setDefaults] = useState<DefaultDevices>({ output: null, input: null });
-  const [labelStyle, setLabelStyle] = useState<LabelStyle>("plain");
-  const [labelStyleOpen, setLabelStyleOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
   const [meterModeOpen, setMeterModeOpen] = useState(false);
   const [profileAutomation, setProfileAutomation] = useState<ProfileAutomationConfig | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
-  const [confirmingMultipleMics, setConfirmingMultipleMics] = useState(false);
   const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
   const [backupBusy, setBackupBusy] = useState<"create" | "restore" | "open" | null>(null);
   const [restorePath, setRestorePath] = useState<string | null>(null);
@@ -198,8 +316,6 @@ export function SettingsScreen() {
   const replayOnboarding = useMixerStore((s) => s.replayOnboarding);
   const showBalance = useMixerStore((s) => s.showBalance);
   const setBalanceVisible = useMixerStore((s) => s.setBalanceVisible);
-  const multipleMics = useMixerStore((s) => s.multipleMics);
-  const setMultipleMics = useMixerStore((s) => s.setMultipleMics);
   const meterMode = useMixerStore((s) => s.meterMode);
   const setMeterMode = useMixerStore((s) => s.setMeterMode);
   const shortcutsEnabled = useShortcutSettings((s) => s.enabled);
@@ -210,13 +326,12 @@ export function SettingsScreen() {
   const [languageCatalog, setLanguageCatalog] = useState<LanguagePackCatalog | null>(null);
 
   useEffect(() => {
-    void invoke<boolean>("get_autostart").then(setAutostart);
+    void invoke<boolean>("get_autostart").then(setAutostart).catch((reason) => setError(String(reason)));
     void invoke<DefaultDevices>("get_default_devices").then(setDefaults).catch(() => {});
     void invoke<ProfileAutomationConfig>("get_profile_automation").then(setProfileAutomation).catch(() => {});
     void invoke<BackupStatus>("get_backup_status").then(setBackupStatus).catch(() => {});
-    void invoke<{ device_label_style: LabelStyle; start_minimized: boolean }>("get_prefs")
+    void invoke<{ start_minimized: boolean }>("get_prefs")
       .then((p) => {
-        setLabelStyle(p.device_label_style);
         setStartMinimized(p.start_minimized);
       })
       .catch(() => {});
@@ -234,28 +349,28 @@ export function SettingsScreen() {
     }
   };
 
-  const pickLabelStyle = async (style: LabelStyle) => {
-    try {
-      await invoke("set_device_label_style", { style });
-      setLabelStyle(style);
-      setError(null);
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
   const toggleAutostart = async () => {
-    if (autostart === null) return;
+    if (autostart === null || startupSavingRef.current) return;
+    startupSavingRef.current = true;
+    setStartupSaving(true);
+    setAutostart(!autostart);
     try {
       const actual = await invoke<boolean>("set_autostart", { enabled: !autostart });
       setAutostart(actual);
       setError(null);
     } catch (e) {
+      setAutostart(autostart);
       setError(String(e));
+    } finally {
+      startupSavingRef.current = false;
+      setStartupSaving(false);
     }
   };
 
   const toggleStartMinimized = async () => {
+    if (startMinimized === null || startupSavingRef.current) return;
+    startupSavingRef.current = true;
+    setStartupSaving(true);
     const next = !startMinimized;
     setStartMinimized(next);
     try {
@@ -264,6 +379,9 @@ export function SettingsScreen() {
     } catch (e) {
       setStartMinimized(!next);
       setError(String(e));
+    } finally {
+      startupSavingRef.current = false;
+      setStartupSaving(false);
     }
   };
 
@@ -338,57 +456,81 @@ export function SettingsScreen() {
       ? preference.locale
       : locale !== "en" ? locale : preference.locale;
 
+  const languageLabel = selectedLanguageValue === "system"
+    ? t("settings.language.systemResolved", {
+      language: availableLocales.find((candidate) => candidate.locale === systemLocale)?.nativeName ?? "English",
+    })
+    : availableLocales.find((candidate) => candidate.locale === selectedLanguageValue)?.nativeName
+      ?? t("settings.language.unavailableOption", { locale: selectedLanguageValue });
+  const meterOption = METER_MODES.find((option) => option.value === meterMode);
+  const meterDescription = `${t("settings.meters.description", {
+    detail: t(meterOption?.detail ?? "settings.meters.off.detail"),
+  })}${meterMode !== "off" ? ` ${t("settings.meters.cpuHint")}` : ""}`;
+
   return (
-    <div className="content narrow">
-      <div className="screen-head">
-        <h1>{t("settings.title")}</h1>
+    <div className="content narrow settings-screen">
+      <div className="screen-head screen-head-rich">
+        <span className="head-icon"><Ms name="settings" /></span>
+        <div className="head-copy">
+          <h1>{t("settings.title")}</h1>
+          <p className="head-sub">{t("settings.subtitle")}</p>
+        </div>
       </div>
       <div className="screen-scroll">
         {error && <div className="error-banner" style={{ borderRadius: 8 }}>{error}</div>}
 
-        <div className="section-label">{t("settings.appearance.section")}</div>
-        <div className="card" style={{ padding: "var(--sp-2)" }}>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="palette" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.theme.title")} description={t("settings.theme.description")} />
-            </div>
-            <div className="theme-picker">
-              {THEMES.map((themeOption) => (
+        <SettingsSection title={t("settings.appearance.section")}>
+          <SettingRow className="preserve-setting" icon="palette" title={t("settings.theme.title")} description={t("settings.theme.description")} stacked>
+            <div className="theme-picker" role="radiogroup" aria-label={t("settings.theme.title")}>
+              {THEMES.map((themeOption, index) => (
                 <button
                   key={themeOption.id}
                   type="button"
-                  className={"theme-swatch" + (themeOption.id === theme ? " active" : "")}
+                  role="radio"
+                  aria-checked={themeOption.id === theme}
+                  tabIndex={themeOption.id === theme ? 0 : -1}
+                  className={"theme-card" + (themeOption.id === theme ? " active" : "")}
                   onClick={() => setTheme(themeOption.id)}
+                  onKeyDown={(event) => {
+                    const flip = document.documentElement.dir === "rtl" ? -1 : 1;
+                    const step = ({ ArrowRight: flip, ArrowLeft: -flip, ArrowDown: 1, ArrowUp: -1 } as Record<string, number>)[event.key];
+                    if (!step) return;
+                    event.preventDefault();
+                    const next = THEMES[(index + step + THEMES.length) % THEMES.length];
+                    setTheme(next.id);
+                    (event.currentTarget.parentElement?.children[THEMES.indexOf(next)] as HTMLElement | undefined)?.focus();
+                  }}
                   title={t(themeOption.labelKey)}
                 >
-                  <span className="theme-swatch-colors">
-                    {themeOption.swatch.map((c) => (
-                      <i key={c} style={{ background: c }} />
-                    ))}
+                  <span className="theme-preview" aria-hidden="true">
+                    {themeOption.id === "system" ? (
+                      <>
+                        <ThemeMock tone="original" />
+                        <ThemeMock tone="dark" split />
+                      </>
+                    ) : (
+                      <ThemeMock tone={themeOption.id} />
+                    )}
+                    <span className="theme-check"><Ms name="check" /></span>
                   </span>
-                  <span className="theme-swatch-label">{t(themeOption.labelKey)}</span>
+                  <span className="theme-card-label">{t(themeOption.labelKey)}</span>
                 </button>
               ))}
             </div>
-          </div>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="translate" />
-            </div>
-            <div className="rmain">
-              <div className="rtitle">
-                <span id="language-setting-title">{t("settings.language.title")}</span>
-                {languageCatalog && languageCatalog.warnings.length > 0 && (
-                  <ProcessingInfo
-                    label={t("settings.language.warningDetails")}
-                    text={languageCatalog.warnings.join("\n\n")}
-                  />
-                )}
-              </div>
-            </div>
+          </SettingRow>
+
+          <SettingRow
+            icon="translate"
+            title={t("settings.language.title")}
+            description={t("settings.language.description")}
+            titleId="language-setting-title"
+            help={languageCatalog && languageCatalog.warnings.length > 0 ? (
+              <ProcessingInfo
+                label={t("settings.language.warningDetails")}
+                text={languageCatalog.warnings.join("\n\n")}
+              />
+            ) : undefined}
+          >
             <div style={{ position: "relative" }}>
               <button
                 type="button"
@@ -405,12 +547,7 @@ export function SettingsScreen() {
                   }
                 }}
               >
-                <span id="language-current-value">{selectedLanguageValue === "system"
-                  ? t("settings.language.systemResolved", {
-                    language: availableLocales.find((candidate) => candidate.locale === locale)?.nativeName ?? "English",
-                  })
-                  : availableLocales.find((candidate) => candidate.locale === selectedLanguageValue)?.nativeName
-                    ?? t("settings.language.unavailableOption", { locale: selectedLanguageValue })}</span>
+                <span id="language-current-value" title={languageLabel}>{languageLabel}</span>
                 <Ms name="expand_more" />
               </button>
               <Popover id="language-menu" open={languageOpen} onClose={() => setLanguageOpen(false)} side="bottom" align="end" style={{ minWidth: 240 }}>
@@ -423,7 +560,7 @@ export function SettingsScreen() {
                   }}
                 >
                   {t("settings.language.systemResolved", {
-                    language: availableLocales.find((candidate) => candidate.locale === locale)?.nativeName ?? "English",
+                    language: availableLocales.find((candidate) => candidate.locale === systemLocale)?.nativeName ?? "English",
                   })}
                 </MenuItem>
                 {availableLocales.map((candidate) => (
@@ -441,22 +578,12 @@ export function SettingsScreen() {
                 ))}
               </Popover>
             </div>
-          </div>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="speed" />
-            </div>
-            <div className="rmain">
-              <SettingTitle
-                title={t("settings.meters.title")}
-                description={`${t("settings.meters.description", {
-                  detail: t(METER_MODES.find((option) => option.value === meterMode)?.detail ?? "settings.meters.off.detail"),
-                })}${meterMode !== "off" ? ` ${t("settings.meters.cpuHint")}` : ""}`}
-              />
-            </div>
+          </SettingRow>
+
+          <SettingRow icon="speed" title={t("settings.meters.title")} description={meterDescription}>
             <div style={{ position: "relative" }}>
               <button type="button" className="select" onClick={() => setMeterModeOpen((open) => !open)}>
-                <span>{t(METER_MODES.find((option) => option.value === meterMode)?.label ?? "settings.meters.off.label")}</span>
+                <span>{t(meterOption?.label ?? "settings.meters.off.label")}</span>
                 <Ms name="expand_more" />
               </button>
               <Popover open={meterModeOpen} onClose={() => setMeterModeOpen(false)} side="bottom" align="end">
@@ -475,67 +602,111 @@ export function SettingsScreen() {
                 ))}
               </Popover>
             </div>
-          </div>
-        </div>
+          </SettingRow>
+        </SettingsSection>
 
-        <div className="section-label">{t("settings.startup.section")}</div>
-        <div className="card" style={{ padding: "var(--sp-2)" }}>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="rocket_launch" />
+        <SettingsSection title={t("settings.overlay.section")} preserve>
+          <SettingRow icon="notifications_active" title={t("settings.osd.title")} description={t("settings.osd.description")} stacked>
+            <div className="theme-picker osd-picker" role="radiogroup" aria-label={t("settings.osd.title")}>
+              {OSD_STYLES.map((option, index) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={option.id === osdStyle}
+                  tabIndex={option.id === osdStyle ? 0 : -1}
+                  className={"theme-card" + (option.id === osdStyle ? " active" : "")}
+                  onClick={() => {
+                    setOsdStyle(option.id);
+                    // Show it once, so the choice can be judged on screen.
+                    showOsd({ label: t("settings.osd.sample"), volumePercent: 72, max: 100, muted: false });
+                  }}
+                  onKeyDown={(event) => {
+                    const flip = document.documentElement.dir === "rtl" ? -1 : 1;
+                    const step = ({ ArrowRight: flip, ArrowLeft: -flip, ArrowDown: 1, ArrowUp: -1 } as Record<string, number>)[event.key];
+                    if (!step) return;
+                    event.preventDefault();
+                    const next = OSD_STYLES[(index + step + OSD_STYLES.length) % OSD_STYLES.length];
+                    setOsdStyle(next.id);
+                    (event.currentTarget.parentElement?.children[OSD_STYLES.indexOf(next)] as HTMLElement | undefined)?.focus();
+                  }}
+                  title={t(option.labelKey)}
+                >
+                  <span className="theme-preview" aria-hidden="true">
+                    <OsdMini style={option.id} />
+                    <span className="theme-check"><Ms name="check" /></span>
+                  </span>
+                  <span className="theme-card-label">{t(option.labelKey)}</span>
+                </button>
+              ))}
             </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.autostart.title")} description={t("settings.autostart.description")} />
-            </div>
-            {autostart !== null && <Toggle on={autostart} onClick={() => void toggleAutostart()} />}
-          </div>
-          {autostart && (
-            <div className="row row-sub">
-              <div className="ricon">
-                <Ms name="dock_to_bottom" />
-              </div>
-              <div className="rmain">
-                <SettingTitle title={t("settings.autostart.minimized.title")} description={t("settings.autostart.minimized.description")} />
-              </div>
-              <Toggle
-                on={startMinimized}
-                onClick={() => void toggleStartMinimized()}
-              />
-            </div>
-          )}
-        </div>
+          </SettingRow>
 
-        <div className="section-label">{t("settings.preferences.section")}</div>
-        <div className="card" style={{ padding: "var(--sp-2)" }}>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="label" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.naming.title")} description={t("settings.naming.description")} />
-            </div>
+          <SettingRow icon="my_location" title={t("settings.osd.position.title")} description={t("settings.osd.position.description")}>
             <div style={{ position: "relative" }}>
-              <button type="button" className="select" onClick={() => setLabelStyleOpen((o) => !o)}>
-                <span>{t(LABEL_STYLES.find((s) => s.value === labelStyle)?.label ?? "settings.naming.plain")}</span>
+              <button
+                type="button"
+                className="select osd-position-select"
+                aria-label={`${t("settings.osd.position.title")}: ${t(OSD_POSITIONS.find((option) => option.id === osdPosition)?.labelKey ?? "settings.osd.position.middleRight")}`}
+                aria-haspopup="menu"
+                aria-expanded={osdPositionOpen}
+                aria-controls={osdPositionOpen ? "osd-position-menu" : undefined}
+                onClick={() => setOsdPositionOpen((open) => !open)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setOsdPositionOpen(true);
+                  }
+                }}
+              >
+                <OsdPositionIcon position={osdPosition} />
+                <span>{t(OSD_POSITIONS.find((option) => option.id === osdPosition)?.labelKey ?? "settings.osd.position.middleRight")}</span>
                 <Ms name="expand_more" />
               </button>
-              <Popover open={labelStyleOpen} onClose={() => setLabelStyleOpen(false)} side="bottom" align="end">
-                {LABEL_STYLES.map((s) => (
+              <Popover id="osd-position-menu" open={osdPositionOpen} onClose={() => setOsdPositionOpen(false)} side="bottom" align="end" style={{ width: 260, maxWidth: "calc(100vw - 16px)", padding: 6 }}>
+                {OSD_POSITIONS.map((option) => (
                   <MenuItem
-                    key={s.value}
-                    selected={s.value === labelStyle}
+                    key={option.id}
+                    className="osd-position-option"
+                    selected={option.id === osdPosition}
                     showCheck
                     onClick={() => {
-                      void pickLabelStyle(s.value);
-                      setLabelStyleOpen(false);
+                      setOsdPosition(option.id);
+                      setOsdPositionOpen(false);
+                      // Show it once, so the new spot can be judged on screen.
+                      showOsd({ label: t("settings.osd.sample"), volumePercent: 72, max: 100, muted: false });
                     }}
                   >
-                    {t(s.example)}
+                    <OsdPositionIcon position={option.id} />
+                    <span>{t(option.labelKey)}</span>
                   </MenuItem>
                 ))}
               </Popover>
             </div>
-          </div>
+          </SettingRow>
+        </SettingsSection>
+
+        <SettingsSection title={t("settings.startup.section")}>
+          <SettingRow
+            icon="rocket_launch"
+            title={t("settings.autostart.title")}
+            description={t("settings.autostart.description")}
+          >
+            {autostart !== null && <Toggle on={autostart} disabled={startupSaving} onClick={() => void toggleAutostart()} />}
+          </SettingRow>
+          {autostart && (
+            <SettingRow
+              sub
+              icon="dock_to_bottom"
+              title={t("settings.autostart.minimized.title")}
+              description={t("settings.autostart.minimized.description")}
+            >
+              <Toggle on={startMinimized ?? false} disabled={startMinimized === null || startupSaving} onClick={() => void toggleStartMinimized()} />
+            </SettingRow>
+          )}
+        </SettingsSection>
+
+        <SettingsSection title={t("settings.preferences.section")}>
           <DeviceRow
             icon="speaker"
             title={t("settings.defaults.output.title")}
@@ -552,93 +723,95 @@ export function SettingsScreen() {
             current={defaults.input}
             onPick={(name) => void pickDefault("input", name)}
           />
-          <div className="row">
-            <div className="ricon">
-              <Ms name="mic_external_on" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.microphones.multiple.title")} description={t("settings.microphones.multiple.description")} />
-            </div>
-            <Toggle
-              on={multipleMics}
-              onClick={() => {
-                if (multipleMics) void setMultipleMics(false);
-                else setConfirmingMultipleMics(true);
-              }}
-            />
-          </div>
-          {multipleMics && (
-            <div className="mic-tip settings-mic-tip">
-              <Ms name="warning" />
-              <span>
-                {t("settings.microphones.multiple.tip")}
-              </span>
-            </div>
-          )}
-          <div className="row">
-            <div className="ricon">
-              <Ms name="balance" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.balance.title")} description={t("settings.balance.description")} />
-            </div>
+          <SettingRow
+            icon="balance"
+            title={t("settings.balance.title")}
+            description={t("settings.balance.description")}
+          >
             <Toggle on={showBalance} onClick={() => void setBalanceVisible(!showBalance)} />
-          </div>
-        </div>
+          </SettingRow>
+        </SettingsSection>
 
-        <div className="section-label">{t("settings.automation.section")}</div>
-        <div className="card" style={{ padding: "var(--sp-2)" }}>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="automation" />
-            </div>
-            <div className="rmain">
-              <div className="rtitle">
-                <span>{t("settings.automation.enable.title")}</span>
-                <HelpInfo
-                  label={t("settings.automation.info.label")}
-                  text={t("settings.automation.info.text")}
-                />
-              </div>
-            </div>
+        <SettingsSection title={t("settings.automation.section")}>
+          <SettingRow
+            icon="automation"
+            title={t("settings.automation.enable.title")}
+            description={t("settings.automation.enable.description")}
+            help={(
+              <HelpInfo
+                label={t("settings.automation.info.label")}
+                text={t("settings.automation.info.text")}
+              />
+            )}
+          >
             {profileAutomation && (
               <Toggle
                 on={profileAutomation.enabled}
                 onClick={() => void saveProfileAutomation({ ...profileAutomation, enabled: !profileAutomation.enabled })}
               />
             )}
-          </div>
-          <div className={`row automation-dependent-setting${profileAutomation?.enabled ? "" : " disabled"}`}>
-            <div className="ricon">
-              <Ms name="restore" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.automation.return.title")} description={t("settings.automation.return.description")} />
-            </div>
+          </SettingRow>
+          <SettingRow
+            sub
+            icon="restore_page"
+            title={t("settings.automation.return.title")}
+            description={t("settings.automation.return.description")}
+            disabled={!profileAutomation?.enabled}
+          >
             {profileAutomation && (
-              <select
-                className="select automation-settings-select"
-                disabled={!profileAutomation.enabled}
-                value={profileAutomation.return_profile ?? ""}
-                onChange={(event) => void saveProfileAutomation({
-                  ...profileAutomation,
-                  return_profile: event.target.value || null,
-                })}
-              >
-                <option value="">{t("settings.automation.return.previous")}</option>
-                {profiles.map((profile) => (
-                  <option key={profile.name} value={profile.name}>{t("settings.automation.return.named", { profile: profile.name })}</option>
-                ))}
-              </select>
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  className="select automation-settings-select"
+                  disabled={!profileAutomation.enabled}
+                  aria-label={t("settings.automation.return.title")}
+                  aria-haspopup="menu"
+                  aria-expanded={returnOpen}
+                  aria-controls="automation-return-menu"
+                  onClick={() => setReturnOpen((open) => !open)}
+                >
+                  <span title={profileAutomation.return_profile
+                    ? t("settings.automation.return.named", { profile: profileAutomation.return_profile })
+                    : t("settings.automation.return.previous")}>{profileAutomation.return_profile
+                    ? t("settings.automation.return.named", { profile: profileAutomation.return_profile })
+                    : t("settings.automation.return.previous")}</span>
+                  <Ms name="expand_more" />
+                </button>
+                <Popover id="automation-return-menu" open={returnOpen} onClose={() => setReturnOpen(false)} side="bottom" align="end" style={{ minWidth: 240 }}>
+                  <MenuItem
+                    selected={!profileAutomation.return_profile}
+                    showCheck
+                    onClick={() => {
+                      void saveProfileAutomation({ ...profileAutomation, return_profile: null });
+                      setReturnOpen(false);
+                    }}
+                  >
+                    {t("settings.automation.return.previous")}
+                  </MenuItem>
+                  {profiles.map((profile) => (
+                    <MenuItem
+                      key={profile.name}
+                      selected={profileAutomation.return_profile === profile.name}
+                      showCheck
+                      onClick={() => {
+                        void saveProfileAutomation({ ...profileAutomation, return_profile: profile.name });
+                        setReturnOpen(false);
+                      }}
+                    >
+                      {t("settings.automation.return.named", { profile: profile.name })}
+                    </MenuItem>
+                  ))}
+                </Popover>
+              </div>
             )}
-          </div>
-          <div className={`row automation-dependent-setting${profileAutomation?.enabled ? "" : " disabled"}`}>
-            <div className="ricon">
-              <Ms name="notifications" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.automation.notifications.title")} description={t("settings.automation.notifications.description")} />
-            </div>
+          </SettingRow>
+          <SettingRow
+            sub
+            icon="notifications"
+            title={t("settings.automation.notifications.title")}
+            description={t("settings.automation.notifications.description")}
+            disabled={!profileAutomation?.enabled}
+          >
             {profileAutomation && (
               <Toggle
                 on={profileAutomation.notifications}
@@ -649,61 +822,40 @@ export function SettingsScreen() {
                 })}
               />
             )}
-          </div>
-        </div>
+          </SettingRow>
+        </SettingsSection>
 
-        <div className="section-label">{t("settings.shortcuts.section")}</div>
-        <div className="card" style={{ padding: "var(--sp-2)" }}>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="keyboard" />
-            </div>
-            <div className="rmain">
-              <div className="rtitle">
-                <span>{t("settings.shortcuts.enable.title")}</span>
-                <HelpInfo
-                  label={t("settings.shortcuts.info.label")}
-                  text={t("settings.shortcuts.info.text")}
-                />
-              </div>
-            </div>
-            <Toggle on={shortcutsEnabled} onClick={() => setShortcutsEnabled(!shortcutsEnabled)} />
-          </div>
-          {SHORTCUT_ROWS.map(({ action, label, icon }) => (
-            <label className="row shortcut-row" key={action}>
-              <div className="ricon">
-                <Ms name={icon} />
-              </div>
-              <div className="rmain">
-                <div className="rtitle">{t(label)}</div>
-              </div>
-              <input
-                className={`shortcut-input${recordingShortcut === action ? " recording" : ""}`}
-                value={recordingShortcut === action ? t("settings.shortcuts.recording") : shortcutBindings[action]}
-                placeholder={t("settings.shortcuts.placeholder")}
-                spellCheck={false}
-                readOnly
-                title={t("settings.shortcuts.inputHint")}
-                aria-label={recordingShortcut === action
-                  ? t("settings.shortcuts.recordingLabel", { label: t(label) })
-                  : t("settings.shortcuts.label", { label: t(label) })}
-                onFocus={() => setRecordingShortcut(action)}
-                onBlur={() => setRecordingShortcut((current) => current === action ? null : current)}
-                onKeyDown={(event) => {
-                  event.preventDefault();
-                  if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key === "Escape") {
-                    event.currentTarget.blur();
-                    return;
-                  }
-                  const shortcut = shortcutFromKeyboardEvent(event);
-                  if (shortcut === null) return;
-                  setShortcutBindings({ ...shortcutBindings, [action]: shortcut });
-                  event.currentTarget.blur();
-                }}
+        <SettingsSection title={t("settings.shortcuts.section")}>
+          <SettingRow
+            icon="keyboard"
+            title={t("settings.shortcuts.enable.title")}
+            description={t("settings.shortcuts.enable.description")}
+            help={(
+              <HelpInfo
+                label={t("settings.shortcuts.info.label")}
+                text={t("settings.shortcuts.info.text")}
               />
-            </label>
+            )}
+          >
+            <Toggle on={shortcutsEnabled} onClick={() => setShortcutsEnabled(!shortcutsEnabled)} />
+          </SettingRow>
+          {SHORTCUT_ROWS.map(({ action, label, icon }) => (
+            <SettingRow sub as="label" className="shortcut-row" key={action} icon={icon} title={t(label)} disabled={!shortcutsEnabled}>
+              <ShortcutRecorderInput
+                value={shortcutBindings[action]}
+                recording={recordingShortcut === action}
+                idleAriaLabel={t("settings.shortcuts.label", { label: t(label) })}
+                recordingAriaLabel={t("settings.shortcuts.recordingLabel", { label: t(label) })}
+                recordingLabel={t("settings.shortcuts.recording")}
+                placeholder={t("settings.shortcuts.placeholder")}
+                title={t("settings.shortcuts.inputHint")}
+                onStartRecording={() => setRecordingShortcut(action)}
+                onStopRecording={() => setRecordingShortcut((current) => (current === action ? null : current))}
+                onCapture={(shortcut) => setShortcutBindings({ ...shortcutBindings, [action]: shortcut })}
+              />
+            </SettingRow>
           ))}
-          <div className="shortcut-footer">
+          <div className="setting-footer">
             <button
               type="button"
               className="select"
@@ -713,18 +865,14 @@ export function SettingsScreen() {
               {t("settings.shortcuts.restoreDefaults")}
             </button>
           </div>
-        </div>
+        </SettingsSection>
 
-        <div className="section-label">{t("settings.backups.section")}</div>
-        <div className="card" style={{ padding: "var(--sp-2)" }}>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="backup" />
-            </div>
-            <div className="rmain">
-              <div className="rtitle">{t("settings.backups.manual.title")}</div>
-              <div className="rsub">{backupStatusText(backupStatus, locale, t)}</div>
-            </div>
+        <SettingsSection title={t("settings.backups.section")}>
+          <SettingRow
+            icon="backup"
+            title={t("settings.backups.manual.title")}
+            description={backupStatusText(backupStatus, locale, t)}
+          >
             <button
               type="button"
               className="select"
@@ -733,14 +881,12 @@ export function SettingsScreen() {
             >
               <span>{t(backupBusy === "create" ? "settings.backups.creating" : "settings.backups.create")}</span>
             </button>
-          </div>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="folder_open" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.backups.location.title")} description={t("settings.backups.location.description")} />
-            </div>
+          </SettingRow>
+          <SettingRow
+            icon="folder_open"
+            title={t("settings.backups.location.title")}
+            description={t("settings.backups.location.description")}
+          >
             <button
               type="button"
               className="select"
@@ -749,14 +895,12 @@ export function SettingsScreen() {
             >
               <span>{t("settings.backups.location.open")}</span>
             </button>
-          </div>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="restore_page" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.backups.restore.title")} description={t("settings.backups.restore.description")} />
-            </div>
+          </SettingRow>
+          <SettingRow
+            icon="restore_page"
+            title={t("settings.backups.restore.title")}
+            description={t("settings.backups.restore.description")}
+          >
             <button
               type="button"
               className="select"
@@ -765,74 +909,48 @@ export function SettingsScreen() {
             >
               <span>{t("settings.backups.restore.action")}</span>
             </button>
-          </div>
-        </div>
+          </SettingRow>
+        </SettingsSection>
 
-        <div className="section-label">{t("settings.about.section")}</div>
-        <div className="card" style={{ padding: "var(--sp-2)" }}>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="info" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={`${t("app.name")} ${version}`} description={t("settings.about.appDescription")} />
-            </div>
-          </div>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="school" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.about.tutorial.title")} description={t("settings.about.tutorial.description")} />
-            </div>
+        <SettingsSection title={t("updates.title")}>
+          <UpdateSettings />
+        </SettingsSection>
+
+        <SettingsSection title={t("settings.about.section")}>
+          <SettingRow
+            icon="info"
+            title={`${t("app.name")} v${version}`}
+            description={t("settings.about.appDescription")}
+          />
+          <SettingRow
+            icon="school"
+            title={t("settings.about.tutorial.title")}
+            description={t("settings.about.tutorial.description")}
+          >
             <button type="button" className="select" onClick={replayOnboarding}>
               <span>{t("common.action.replay")}</span>
             </button>
-          </div>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="refresh" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.about.restart.title")} description={t("settings.about.restart.description")} />
-            </div>
+          </SettingRow>
+          <SettingRow
+            icon="refresh"
+            title={t("settings.about.restart.title")}
+            description={t("settings.about.restart.description")}
+          >
             <button type="button" className="select" onClick={restartApplication}>
               <span>{t("common.action.restart")}</span>
             </button>
-          </div>
-          <div className="row">
-            <div className="ricon">
-              <Ms name="restart_alt" />
-            </div>
-            <div className="rmain">
-              <SettingTitle title={t("settings.about.reset.title")} description={t("settings.about.reset.description")} />
-            </div>
+          </SettingRow>
+          <SettingRow
+            icon="restart_alt"
+            title={t("settings.about.reset.title")}
+            description={t("settings.about.reset.description")}
+          >
             <button type="button" className="select" onClick={() => setConfirmingReset(true)}>
               <span>{t("settings.about.reset.action")}</span>
             </button>
-          </div>
-        </div>
+          </SettingRow>
+        </SettingsSection>
       </div>
-      <Modal open={confirmingMultipleMics} onClose={() => setConfirmingMultipleMics(false)} title={t("settings.multipleDialog.title")}>
-        <p className="modal-text">
-          {t("settings.multipleDialog.body")}
-        </p>
-        <p className="modal-text">{t("settings.multipleDialog.detail")}</p>
-        <div className="modal-btns">
-          <button
-            type="button"
-            className="modal-btn primary"
-            onClick={() => {
-              setConfirmingMultipleMics(false);
-              void setMultipleMics(true);
-            }}
-          >
-            {t("settings.multipleDialog.confirm")}
-          </button>
-          <button type="button" className="modal-btn" onClick={() => setConfirmingMultipleMics(false)}>{t("common.action.cancel")}</button>
-        </div>
-      </Modal>
-
       <ConfirmModal
         open={restorePath !== null}
         onClose={() => setRestorePath(null)}

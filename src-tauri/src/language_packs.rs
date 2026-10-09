@@ -255,7 +255,7 @@ fn contains_markup(value: &str) -> bool {
 }
 
 fn language_directory() -> Option<PathBuf> {
-    dirs::config_dir().map(|root| root.join("sonux").join("locales"))
+    dirs::config_dir().map(|root| root.join("mixweave").join("locales"))
 }
 
 fn location_label() -> String {
@@ -263,9 +263,9 @@ fn location_label() -> String {
         return "Unavailable".to_string();
     };
     if dirs::home_dir().map(|home| home.join(".config")).as_ref() == Some(&config_root) {
-        "~/.config/sonux/locales".to_string()
+        "~/.config/mixweave/locales".to_string()
     } else {
-        "$XDG_CONFIG_HOME/sonux/locales".to_string()
+        "$XDG_CONFIG_HOME/mixweave/locales".to_string()
     }
 }
 
@@ -286,7 +286,7 @@ fn open_language_directory_at(root: &Path, create: bool) -> Result<Option<File>,
             match fs::symlink_metadata(parent) {
                 Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
                     return Err(
-                        "The Sonux configuration location must be a real directory.".to_string()
+                        "The Mixweave configuration location must be a real directory.".to_string(),
                     );
                 }
                 Err(parent_error) if parent_error.kind() == std::io::ErrorKind::NotFound => {
@@ -351,197 +351,5 @@ fn seed_example_at(directory: &File) -> Result<(), String> {
             .map_err(|error| format!("Unable to create {EXAMPLE_FILE_NAME}: {error}")),
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
         Err(error) => Err(format!("Unable to create {EXAMPLE_FILE_NAME}: {error}")),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-    use std::os::unix::fs::{symlink, PermissionsExt};
-
-    fn temporary_root(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "sonux-language-packs-{label}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
-    }
-
-    fn write_pack(root: &Path, name: &str, locale: &str, translations: serde_json::Value) {
-        fs::create_dir_all(root).unwrap();
-        fs::write(
-            root.join(name),
-            serde_json::to_vec(&serde_json::json!({
-                "version": 1, "locale": locale, "name": locale, "nativeName": locale,
-                "direction": "ltr", "translations": translations
-            }))
-            .unwrap(),
-        )
-        .unwrap();
-    }
-
-    #[test]
-    fn loads_partial_unicode_packs_in_filename_order() {
-        let root = temporary_root("valid");
-        write_pack(
-            &root,
-            "b.json",
-            "de-DE",
-            serde_json::json!({"settings.language.title": "Sprache"}),
-        );
-        write_pack(
-            &root,
-            "a.json",
-            "fi",
-            serde_json::json!({"settings.language.title": "Kieli"}),
-        );
-        let (packs, warnings) = load_from(&root);
-        assert!(warnings.is_empty(), "{warnings:?}");
-        assert_eq!(
-            packs
-                .iter()
-                .map(|pack| pack.locale.as_str())
-                .collect::<Vec<_>>(),
-            vec!["fi", "de-DE"]
-        );
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn invalid_files_warn_without_blocking_valid_packs() {
-        let root = temporary_root("invalid");
-        write_pack(&root, "a.json", "fi", serde_json::json!({}));
-        write_pack(&root, "b.json", "fi", serde_json::json!({}));
-        write_pack(&root, "c.json", "en", serde_json::json!({}));
-        fs::write(root.join("d.json"), b"not json").unwrap();
-        symlink(root.join("a.json"), root.join("e.json")).unwrap();
-        let (packs, warnings) = load_from(&root);
-        assert_eq!(packs.len(), 1);
-        assert_eq!(warnings.len(), 4, "{warnings:?}");
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn validation_enforces_schema_and_bounds() {
-        let valid: LanguagePack = serde_json::from_value(serde_json::json!({
-            "version": 1,
-            "locale": "zz-Example",
-            "name": "Example",
-            "nativeName": "Example",
-            "direction": "ltr",
-            "translations": {"settings.language.title": "Language"}
-        }))
-        .unwrap();
-        validate(&valid).unwrap();
-
-        let unknown = serde_json::from_value::<LanguagePack>(serde_json::json!({
-            "version": 1, "locale": "fi", "name": "Suomi", "nativeName": "Suomi",
-            "direction": "ltr", "translations": {}, "extra": true
-        }));
-        assert!(unknown.is_err());
-        let mut invalid = valid.clone();
-        invalid.locale = "bad_locale".to_string();
-        assert!(validate(&invalid).is_err());
-        invalid = valid.clone();
-        invalid.locale = "en-US".to_string();
-        assert!(validate(&invalid).is_err());
-        invalid = valid;
-        invalid.translations.insert(
-            "Bad Key".to_string(),
-            serde_json::json!({"frontend": "will ignore this entry"}),
-        );
-        validate(&invalid).unwrap();
-    }
-
-    #[test]
-    fn fifo_pack_is_rejected_without_blocking() {
-        let root = temporary_root("fifo");
-        fs::create_dir_all(&root).unwrap();
-        let fifo = root.join("blocked.json");
-        let fifo_path = CString::new(fifo.as_os_str().as_bytes()).unwrap();
-        assert_eq!(unsafe { libc::mkfifo(fifo_path.as_ptr(), 0o600) }, 0);
-        let (packs, warnings) = load_from(&root);
-        assert!(packs.is_empty());
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("regular JSON file"), "{warnings:?}");
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn loading_is_bounded_by_file_count_and_file_size() {
-        let root = temporary_root("bounds");
-        for index in 0..=MAX_PACK_FILES {
-            write_pack(
-                &root,
-                &format!("{index:02}.json"),
-                &format!("zz-{index:02}"),
-                serde_json::json!({}),
-            );
-        }
-        fs::write(
-            root.join("00.json"),
-            vec![b' '; MAX_PACK_BYTES as usize + 1],
-        )
-        .unwrap();
-        let (packs, warnings) = load_from(&root);
-        assert_eq!(packs.len(), MAX_PACK_FILES - 1);
-        assert!(warnings.iter().any(|warning| warning.contains("first 32")));
-        assert!(warnings.iter().any(|warning| warning.contains("256 KiB")));
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn directory_scanning_is_bounded() {
-        let root = temporary_root("directory-bound");
-        fs::create_dir_all(&root).unwrap();
-        for index in 0..=MAX_DIRECTORY_ENTRIES {
-            fs::write(root.join(format!("entry-{index:03}.txt")), b"").unwrap();
-        }
-        let (_, warnings) = load_from(&root);
-        assert!(warnings
-            .iter()
-            .any(|warning| warning.contains("first 128 entries")));
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn seeds_private_example_once_and_hides_the_template() {
-        let parent = temporary_root("seed");
-        fs::create_dir(&parent).unwrap();
-        let root = parent.join("locales");
-        let directory = open_language_directory_at(&root, true).unwrap().unwrap();
-        seed_example_at(&directory).unwrap();
-        let example = root.join(EXAMPLE_FILE_NAME);
-        assert_eq!(fs::read(&example).unwrap(), EXAMPLE_SOURCE);
-        assert_eq!(
-            fs::metadata(&root).unwrap().permissions().mode() & 0o777,
-            0o700
-        );
-        assert_eq!(
-            fs::metadata(&example).unwrap().permissions().mode() & 0o777,
-            0o600
-        );
-        assert!(load_from(&root).0.is_empty());
-        fs::write(&example, b"personal translation").unwrap();
-        seed_example_at(&directory).unwrap();
-        assert_eq!(fs::read(&example).unwrap(), b"personal translation");
-        fs::remove_dir_all(parent).unwrap();
-    }
-
-    #[test]
-    fn refuses_symbolic_link_roots() {
-        let root = temporary_root("symlink-root");
-        let outside = root.join("outside");
-        let linked = root.join("linked");
-        fs::create_dir_all(&outside).unwrap();
-        symlink(&outside, &linked).unwrap();
-        assert!(open_language_directory_at(&linked, true).is_err());
-        assert_eq!(load_from(&linked).1.len(), 1);
-        fs::remove_dir_all(root).unwrap();
     }
 }

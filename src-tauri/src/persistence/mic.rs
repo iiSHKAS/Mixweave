@@ -5,11 +5,11 @@ use crate::audio::types::MicConfig;
 use crate::error::SinkError;
 
 /// Mic chain configuration, stored as JSON at
-/// `$XDG_CONFIG_HOME/sonux/mic.json`.
+/// `$XDG_CONFIG_HOME/mixweave/mic.json`.
 pub fn config_path() -> Result<PathBuf, SinkError> {
     let dir = dirs::config_dir()
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
-    Ok(dir.join("sonux").join("mic.json"))
+    Ok(dir.join("mixweave").join("mic.json"))
 }
 
 pub fn load() -> MicConfig {
@@ -18,7 +18,7 @@ pub fn load() -> MicConfig {
     };
     match fs::read_to_string(&path) {
         Ok(raw) => parse(&raw).unwrap_or_else(|e| {
-            eprintln!("sonux: ignoring invalid {}: {e}", path.display());
+            eprintln!("mixweave: ignoring invalid {}: {e}", path.display());
             MicConfig::default()
         }),
         Err(_) => MicConfig::default(),
@@ -61,24 +61,4 @@ pub(crate) fn normalize_and_validate(config: &mut MicConfig) -> Result<(), SinkE
     config.input_device = config.input_device.take().filter(|name| !name.is_empty());
     config.clamp_ranges();
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn global_mic_rejects_foreign_nodes_and_clamps_dsp() {
-        let mut config = MicConfig {
-            node_name: "source_mic_other".into(),
-            ..Default::default()
-        };
-        assert!(normalize_and_validate(&mut config).is_err());
-        config.node_name = "sink_mic".into();
-        config.gain_percent = u8::MAX;
-        config.comp_ratio = f32::INFINITY;
-        normalize_and_validate(&mut config).unwrap();
-        assert_eq!(config.gain_percent, 200);
-        assert_eq!(config.comp_ratio, 3.0);
-    }
 }

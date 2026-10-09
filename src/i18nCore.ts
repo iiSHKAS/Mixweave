@@ -1,5 +1,25 @@
 export const ENGLISH_TRANSLATIONS = {
-  "app.name": "Sonux",
+  "updates.title": "Updates",
+  "updates.automatic": "Automatic updates",
+  "updates.description": "Enabled by default for AppImage. Contacts GitHub every six hours while running, then downloads and installs signed updates. Never restarts automatically. Disabling cancels a pending download; a replacement already in progress finishes.",
+  "updates.unsupported": "Self-updates are available only for a user-owned AppImage.",
+  "updates.unconfigured": "This build has no update signing key configured.",
+  "updates.idle": "No update check yet.",
+  "updates.checking": "Checking for updates…",
+  "updates.current": "You are up to date.",
+  "updates.downloading": "Downloading {{version}} automatically…",
+  "updates.installing": "Installing {{version}}…",
+  "updates.installed": "Version {{version}} is installed and will run next time you open Mixweave.",
+  "updates.error": "Update failed",
+  "updates.error.network": "Could not reach GitHub. Check your internet connection and try again.",
+  "updates.error.timeout": "The update server took too long to respond. Try again later.",
+  "updates.error.tls": "The secure connection to GitHub failed. Check your system date and time and certificates.",
+  "updates.error.signature": "The downloaded update failed signature verification and was rejected.",
+  "updates.error.other": "The update could not be completed.",
+  "updates.error.details": "Technical details",
+  "updates.restart": "Restart now (brief audio interruption)",
+  "updates.check": "Check and install update",
+  "app.name": "Mixweave",
   "navigation.mixer": "Mixer",
   "navigation.applications": "Applications",
   "navigation.apps": "Apps",
@@ -7,6 +27,7 @@ export const ENGLISH_TRANSLATIONS = {
   "navigation.microphone": "Mic",
   "navigation.settings": "Settings",
   "navigation.audioWorkspace": "Audio workspace",
+  "navigation.customChannels": "Custom channels",
   "common.action.add": "Add",
   "common.action.back": "Back",
   "common.action.cancel": "Cancel",
@@ -40,15 +61,32 @@ export const ENGLISH_TRANSLATIONS = {
   "window.closeToTrayHint": "Hides to tray - quit from the tray menu",
   "errors.audio": "Audio error:",
   "errors.restartHint": "Restart the application without deleting settings",
-  "errors.restartFailed": "Could not restart Sonux: {{cause}}",
+  "errors.restartFailed": "Could not restart Mixweave: {{cause}}",
   "errors.shortcutsDuplicate": "Each global shortcut must use a different key combination.",
   "errors.shortcutsRegistration": "Could not register {{shortcuts}} globally. Other shortcuts remain active.",
   "settings.title": "Settings",
+  "settings.subtitle": "Tune Mixweave to fit your setup.",
   "settings.appearance.section": "Appearance",
   "settings.theme.title": "Theme",
-  "settings.theme.description": "Original, or Tokyo Night to match your desktop",
-  "settings.theme.original": "Original",
-  "settings.theme.tokyoNight": "Tokyo Night",
+  "settings.theme.description": "Light Mode, Dark Mode with the red mute treatment, or follow the system",
+  "settings.theme.original": "Light Mode",
+  "settings.theme.dark": "Dark Mode",
+  "settings.theme.system": "Follow System",
+  "settings.overlay.section": "Popup Overlay",
+  "settings.osd.title": "Shortcut popup",
+  "settings.osd.description": "How the volume popup looks when you use a shortcut. Choosing one shows a preview.",
+  "settings.osd.segments": "Segments",
+  "settings.osd.fader": "Vertical fader",
+  "settings.osd.waves": "Waves",
+  "settings.osd.sample": "Game",
+  "settings.osd.position.title": "Position",
+  "settings.osd.position.description": "Where the popup appears on screen. Choosing one shows a preview.",
+  "settings.osd.position.topRight": "Top right",
+  "settings.osd.position.middleRight": "Middle right",
+  "settings.osd.position.bottomRight": "Bottom right",
+  "settings.osd.position.topLeft": "Top left",
+  "settings.osd.position.middleLeft": "Middle left",
+  "settings.osd.position.bottomLeft": "Bottom left",
   "settings.language.title": "Language",
   "settings.language.description": "Use your system language or choose an installed translation",
   "settings.language.system": "System default",
@@ -80,13 +118,13 @@ export const ENGLISH_TRANSLATIONS = {
   "settings.preferences.section": "Preferences",
   "settings.startup.section": "Startup",
   "settings.naming.title": "Device naming",
-  "settings.naming.description": "Naming scheme for Sonux-managed devices",
+  "settings.naming.description": "Naming scheme for Mixweave-managed devices",
   "settings.naming.plain": "Plain",
   "settings.naming.suffix": "Suffix",
   "settings.naming.prefix": "Prefix",
   "settings.naming.plainExample": "Game",
-  "settings.naming.suffixExample": "Game (Sonux)",
-  "settings.naming.prefixExample": "Sonux · Game",
+  "settings.naming.suffixExample": "Game (Mixweave)",
+  "settings.naming.prefixExample": "Mixweave · Game",
   "settings.defaults.output.title": "Default output",
   "settings.defaults.output.description": "Where channels set to “System default” play",
   "settings.defaults.input.title": "Default input",
@@ -104,13 +142,13 @@ export const ENGLISH_TRANSLATIONS = {
   "settings.automation.enable.title": "Enable automatic activation",
   "settings.automation.enable.description": "Activate profiles when their linked games or applications start",
   "settings.automation.info.label": "How profile switching works",
-  "settings.automation.info.text": "When a linked application starts, Sonux activates its profile. If several linked applications run, the newest one takes priority. Selecting a profile manually overrides automation until the matched application closes.",
+  "settings.automation.info.text": "When a linked application starts, Mixweave activates its profile. If several linked applications run, the newest one takes priority. Selecting a profile manually overrides automation until the matched application closes.",
   "settings.automation.return.title": "After linked applications close",
-  "settings.automation.return.description": "Choose which profile Sonux should use next",
+  "settings.automation.return.description": "Choose which profile Mixweave should use next",
   "settings.automation.return.previous": "Restore the previous profile",
   "settings.automation.return.named": "Return to {{profile}}",
   "settings.automation.notifications.title": "Profile switch notifications",
-  "settings.automation.notifications.description": "Show a desktop notification when Sonux changes profiles automatically",
+  "settings.automation.notifications.description": "Show a desktop notification when Mixweave changes profiles automatically",
   "settings.shortcuts.section": "Global shortcuts",
   "settings.shortcuts.enable.title": "Enable shortcuts",
   "settings.shortcuts.enable.description": "Control audio while games and other apps are focused",
@@ -145,12 +183,12 @@ export const ENGLISH_TRANSLATIONS = {
   "settings.about.engine.title": "Audio engine",
   "settings.about.engine.native": "Native PipeWire (pipewire-rs) - live metering, passive routing",
   "settings.about.engine.fallback": "pactl fallback - native engine unavailable on this system",
-  "settings.about.appDescription": "Customized from Sink · GPL-3.0 · config in ~/.config/sonux",
+  "settings.about.appDescription": "Customized from Sink · GPL-3.0 · config in ~/.config/mixweave",
   "settings.about.tutorial.title": "Tutorial",
   "settings.about.tutorial.description": "Replay the first-run tour",
   "settings.about.restart.title": "Restart application",
   "settings.about.restart.description": "Reload the audio engine and interface without deleting settings",
-  "settings.about.reset.title": "Reset Sonux",
+  "settings.about.reset.title": "Reset Mixweave",
   "settings.about.reset.description": "Erase all channels, mixes, profiles, app history and preferences",
   "settings.about.reset.action": "Reset…",
   "settings.multipleDialog.title": "Enable multiple microphones?",
@@ -160,10 +198,10 @@ export const ENGLISH_TRANSLATIONS = {
   "settings.restoreDialog.title": "Restore {{name}}?",
   "settings.restoreDialog.backup": "backup",
   "settings.restoreDialog.confirm": "Restore and restart",
-  "settings.restoreDialog.body": "Your current Sonux setup will be replaced. Before restoring, Sonux will save it as a clearly labelled Automatic Recovery Backup, then restart.",
-  "settings.resetDialog.title": "Reset Sonux?",
+  "settings.restoreDialog.body": "Your current Mixweave setup will be replaced. Before restoring, Mixweave will save it as a clearly labelled Automatic Recovery Backup, then restart.",
+  "settings.resetDialog.title": "Reset Mixweave?",
   "settings.resetDialog.confirm": "Reset everything",
-  "settings.resetDialog.body": "Everything you've set up - channels, mixes, profiles, app assignments, history and preferences - is permanently deleted, and Sonux relaunches as if freshly installed.",
+  "settings.resetDialog.body": "Everything you've set up - channels, mixes, profiles, app assignments, history and preferences - is permanently deleted, and Mixweave relaunches as if freshly installed.",
   "applications.title": "Applications",
   "applications.description": "Route each app's audio to a channel",
   "applications.streamOne": "{{count}} stream",
@@ -180,7 +218,7 @@ export const ENGLISH_TRANSLATIONS = {
   "applications.discoveredAs": "Discovered as “{{name}}”",
   "applications.rename": "Rename {{name}}",
   "applications.ignore": "Ignore {{name}}",
-  "applications.ignoreHint": "Ignore - hide this app from Sonux",
+  "applications.ignoreHint": "Ignore - hide this app from Mixweave",
   "applications.streamNumber": "stream #{{number}}",
   "applications.volume": "{{name}} volume",
   "applications.lastSeen": "last seen {{time}}",
@@ -195,6 +233,8 @@ export const ENGLISH_TRANSLATIONS = {
   "channel.listening": "Listening",
   "channel.listenHint": "Listen to this channel on the default output",
   "channel.section": "Channel",
+  "channel.subtitle": "Level, output and processing for this channel.",
+  "channel.apps": "Applications",
   "channel.presets": "Presets",
   "channel.volume": "Volume",
   "channel.volumeLabel": "{{channel}} volume",
@@ -202,12 +242,41 @@ export const ENGLISH_TRANSLATIONS = {
   "channel.appsOne": "{{count}} app",
   "channel.appsMany": "{{count}} apps",
   "channel.appsHint": "Choose applications assigned to this channel",
+  "channel.shortcuts.button": "Keyboard shortcuts for {{channel}}",
+  "channel.shortcuts.title": "{{channel}} shortcuts",
+  "channel.shortcuts.buttonPersonal": "Personal shortcuts for {{channel}}",
+  "channel.shortcuts.buttonStream": "Stream shortcuts for {{channel}}",
+  "channel.shortcuts.titlePersonal": "{{channel}} • Personal shortcuts",
+  "channel.shortcuts.titleStream": "{{channel}} • Stream shortcuts",
+  "channel.shortcuts.mute": "Mute / unmute",
+  "channel.shortcuts.volumeUp": "Volume up",
+  "channel.shortcuts.volumeDown": "Volume down",
+  "channel.shortcuts.clear": "Clear the {{label}} shortcut",
+  "channel.shortcuts.disabledHint": "Turn this on so the shortcuts below actually take effect",
   "channel.processing.section": "Playback processing",
+  "volumeRange.title": "Allow above 100%",
+  "volumeRange.short": "Above 100%",
+  "volumeRange.description": "Lets this slider amplify up to {{max}}%. Off keeps it capped at 100%.",
   "processing.outputMode": "Output mode",
   "processing.headphones": "Headphones",
   "processing.speakers": "Speakers",
   "processing.spatial.title": "Spatial audio",
   "processing.spatial.info": "Headphones use the Aalto University near-field SOFA HRTF to render 7.1 audio.\n\nPerformance emphasizes directional clarity. Immersion adds diffuse room energy.\n\nDistance moves from Close at 0, through neutral at 50, to Far at 100. Its level ranges from +2.5 dB to -2.5 dB.\n\nSelect surround output in the game and disable the game's own HRTF or DTS processing. LFE retains a direct bass path.\n\nSpeakers use a 7.1-to-stereo fold-down instead.",
+  "processing.spatial.subtitle": "Give your sound a sense of space.",
+  "processing.spatial.front": "Front",
+  "processing.spatial.you": "You",
+  "processing.spatial.hint": "Select a channel to preview its position",
+  "processing.spatial.tuningHeading": "Spatial tuning",
+  "processing.spatial.precision": "Precision",
+  "processing.spatial.balanced": "Balanced",
+  "processing.spatial.near": "Near",
+  "processing.spatial.far": "Far",
+  "processing.spatial.noteHeadphones": "Binaural 7.1 rendering for headphones.",
+  "processing.spatial.noteSpeakers": "Spatial processing for speaker playback.",
+  "processing.outputMode.subtitle": "Choose how this channel is heard.",
+  "processing.smartVolume.subtitle": "Keep playback levels consistent.",
+  "processing.limiter.subtitle": "Keep peaks below your ceiling.",
+  "processing.limiter.note": "Sets the maximum output level for this channel.",
   "processing.spatial.stageLabel": "7.1 speaker test",
   "processing.spatial.test": "Test {{speaker}}",
   "processing.spatial.frontLeft": "Front left",
@@ -223,13 +292,15 @@ export const ENGLISH_TRANSLATIONS = {
   "processing.spatial.immersion": "Immersion",
   "processing.spatial.distance": "Distance",
   "processing.outputInfo": "Headphones add gentle low-frequency crossfeed for hard-panned stereo audio.\n\nSpeakers keep direct stereo.\n\nThis stereo option is not HRTF surround.",
-  "processing.voice.title": "Voice dynamics",
   "processing.smartVolume.title": "Smart volume & boost",
   "processing.smartVolume.infoLabel": "Smart volume and boost",
-  "processing.voice.info": "Noise gate silences signals below its threshold.\n\nCompressor reduces loud peaks while keeping speech present.\n\nVolume boost adjusts the final channel level.",
   "processing.smartVolume.info": "Smart volume balances quiet and loud audio automatically.\n\nVolume boost adjusts the final channel level.",
   "processing.noiseGate": "Noise gate",
+  "processing.noiseGate.subtitle": "Silence the background between words.",
+  "processing.noiseGate.info": "Silences signals below the threshold, so background sound between words is cut.",
   "processing.compressor": "Compressor",
+  "processing.compressor.subtitle": "Even out loud and quiet speech.",
+  "processing.compressor.info": "Reduces loud peaks while keeping speech present. Volume boost adjusts the final channel level.",
   "processing.threshold": "Threshold",
   "processing.strength": "Strength",
   "processing.level": "Level",
@@ -284,14 +355,9 @@ export const ENGLISH_TRANSLATIONS = {
   "equalizer.bandOptions": "Band {{number}} options",
   "equalizer.resetBand": "Reset band",
   "equalizer.deleteBand": "Delete band",
-  "equalizer.region.subBass": "SUB BASS",
-  "equalizer.region.bass": "BASS",
-  "equalizer.region.lowMids": "LOW MIDS",
-  "equalizer.region.midRange": "MID RANGE",
-  "equalizer.region.upperMids": "UPPER MIDS",
-  "equalizer.region.highs": "HIGHS",
   "microphone.loading": "Loading mic configuration…",
   "microphone.title": "Microphone",
+  "microphone.subtitle": "Your voice, fine-tuned.",
   "microphone.primary": "Primary",
   "microphone.addChannel": "Add microphone channel",
   "microphone.deleteChannel": "Delete microphone channel",
@@ -311,6 +377,12 @@ export const ENGLISH_TRANSLATIONS = {
   "microphone.compressor.info": "Evens out loud peaks and quiet speech.\n\nThreshold chooses when compression starts. Ratio controls its strength.",
   "microphone.ratio": "Ratio",
   "microphone.limiter.info": "Applies a hard final ceiling so the processed microphone cannot clip downstream.",
+  "microphone.denoise.title": "Noise suppression",
+  "microphone.denoise.info": "AI noise suppression (RNNoise) removes steady background sounds such as fans, hum and keyboard noise from your voice, before the EQ and dynamics.\n\nStrength blends your original voice with the cleaned one; very high values can make the voice sound processed. It adds about 10 ms of delay.",
+  "microphone.denoise.strength": "Strength",
+  "microphone.echo.title": "Echo cancellation",
+  "microphone.echo.info": "Removes what your speakers play from the microphone signal, so people on a call do not hear the game or themselves coming back. It is not needed with headphones.\n\nIt compares the microphone with the default output device, so it works best when your speakers are that device. It adds about 10 ms of delay.",
+  "microphone.echo.hint": "For speakers - not needed with headphones",
   "microphone.create.title": "New microphone channel",
   "microphone.create.body": "Create another independently processed virtual microphone. One channel is recommended unless your workflow specifically needs separate inputs.",
   "microphone.create.name": "Virtual microphone name",
@@ -367,13 +439,13 @@ export const ENGLISH_TRANSLATIONS = {
   "audioTest.play": "Play your recording through the live processing",
   "mixer.loading": "Creating virtual channels…",
   "mixer.group.master": "Master",
-  "mixer.group.masterHint": "The master profile and a capturable mix containing every playback channel.",
+  "mixer.group.masterHint": "The overall listening volume - scales every channel's level and mutes them all together, on top of each channel's own volume.",
   "mixer.group.addMix": "Add a mix (capturable source for OBS/recorders)",
   "mixer.group.channels": "Channels",
   "mixer.group.channelsHint": "Playback: apps route into channels; each has its own volume, mute and output device.",
   "mixer.group.addChannel": "Add a channel",
   "mixer.group.microphone": "Mic",
-  "mixer.group.microphoneHint": "Your processed microphone. Apps capture the result as the Sonux microphone.",
+  "mixer.group.microphoneHint": "Your processed microphone. Apps capture the result as the Mixweave microphone.",
   "mixer.group.microphoneDisabledHint": "The processed microphone is disabled for this profile. Open it to configure or enable it.",
   "mixer.group.mixes": "Mixes",
   "mixer.group.mixesHint": "Recordable copies of your channels. In OBS, add a mix as an audio input (mic/aux) - not Desktop Audio.",
@@ -398,10 +470,10 @@ export const ENGLISH_TRANSLATIONS = {
   "mixer.channel.changeIcon": "Change icon",
   "mixer.channel.changeIconNamed": "Change icon for {{channel}}",
   "mixer.renameHint": "Double-click to rename",
-  "mixer.channel.settings": "Open {{channel}} settings",
   "mixer.channel.routedApps": "Applications routed to {{channel}}",
   "mixer.channel.dropApps": "Drop apps here",
-  "mixer.channel.dragApp": "Drag {{application}} to another channel",
+  "mixer.channel.dragApp": "Drag {{application}} to another channel, or press Enter to choose one",
+  "mixer.channel.releaseToMove": "Release to move",
   "mixer.running": "Running",
   "mixer.routeError": "The dragged application could not be routed.",
   "mixer.unmute": "Unmute",
@@ -411,6 +483,17 @@ export const ENGLISH_TRANSLATIONS = {
   "mixer.output.default": "Default",
   "mixer.output.failover": "Fail over to another device",
   "mixer.output.failoverHint": "Off: this channel plays only on the device above (or the exact system default) and stays silent if it's gone, instead of failing over to another output.",
+  "mixer.hardware.button": "Devices",
+  "mixer.hardware.title": "Choose input/output devices and adjust their real level",
+  "mixer.hardware.outputs": "Output",
+  "mixer.hardware.inputs": "Input",
+  "mixer.hardware.none": "No devices found",
+  "mixer.hardware.error": "Could not read device levels.",
+  "mixer.hardware.useOutput": "Send all channels to this output",
+  "mixer.hardware.useInput": "Use this microphone",
+  "mixer.hardware.mute": "Mute {{device}}",
+  "mixer.hardware.unmute": "Unmute {{device}}",
+  "mixer.hardware.level": "{{device}} level",
   "mixer.output.label": "Output: {{output}}",
   "mixer.input.label": "Microphone input: {{input}}",
   "mixer.apps.none": "No apps discovered yet",
@@ -419,6 +502,7 @@ export const ENGLISH_TRANSLATIONS = {
   "mixer.microphone.renameHint": "Double-click to rename - other apps see this name",
   "mixer.microphone.unmute": "Unmute mic",
   "mixer.microphone.mute": "Mute mic",
+  "mixer.microphone.holdToListen": "Hold to listen to your processed mic (hold again to stop)",
   "mixer.microphone.sidetone": "Sidetone - hear your processed mic on the default output",
   "mixer.microphone.openSettings": "Open mic settings",
   "mixer.microphone.enableHint": "Enable this microphone for the active profile",
@@ -436,7 +520,10 @@ export const ENGLISH_TRANSLATIONS = {
   "mixer.mix.deleteTitle": "Delete mix “{{mix}}”?",
   "mixer.mix.deleteBody": "Recorders capturing “{{mix}}” will go silent. Channels are unaffected.",
   "mixer.mix.renameHint": "Double-click to rename - recorders see this name",
-  "mixer.mix.masterHint": "The master mix always carries every channel",
+  "mixer.mix.masterHint": "Scales and mutes every channel's volume together - also always carries every channel for recorders",
+  "mixer.mix.masterVolume": "Master volume - the overall level for every channel",
+  "mixer.mix.masterMute": "Mute everything (every channel goes silent)",
+  "mixer.mix.masterUnmute": "Unmute everything",
   "mixer.mix.chooseChannels": "Choose which channels this mix carries",
   "mixer.mix.autoIncludeHint": "New channels join this mix automatically - keep the ones you don't want unchecked",
   "mixer.mix.autoInclude": "Auto-include new channels",
@@ -451,7 +538,21 @@ export const ENGLISH_TRANSLATIONS = {
   "mixer.mix.allRouted": "All active apps are routed",
   "mixer.mix.dragApp": "Drag {{application}} to a channel",
   "mixer.mix.sourceHint": "Select “{{mix}}” as an audio source in OBS or any recorder",
-  "mixer.mix.recordingSource": "Recording source",
+  "mixer.options.button": "Mixer options",
+  "mixer.options.titleStreamerOn": "Mixer options · Streamer mode on",
+  "mixer.options.streamerMode": "Streamer mode",
+  "mixer.options.streamerModeDesc": "Separate personal and stream volume, with independent mute controls.",
+  "streamer.personal": "Personal",
+  "streamer.stream": "Stream",
+  "streamer.personalVolumeLabel": "{{name}} - personal volume",
+  "streamer.streamVolumeLabel": "{{name}} - stream volume",
+  "streamer.personalMute": "Mute {{name}}'s personal output",
+  "streamer.personalUnmute": "Unmute {{name}}'s personal output",
+  "streamer.streamMute": "Mute {{name}}'s stream output",
+  "streamer.streamUnmute": "Unmute {{name}}'s stream output",
+  "streamer.personalMonitor": "Listen to {{name}}'s personal mix",
+  "streamer.streamMonitor": "Listen to {{name}}'s stream mix",
+  "streamer.shortcutsUnavailable": "Per-output shortcuts aren't available yet",
   "profiles.loading": "Loading profiles…",
   "profiles.title": "Profiles",
   "profiles.description": "Create, activate and manage complete audio setups",
@@ -500,12 +601,12 @@ export const ENGLISH_TRANSLATIONS = {
   "profiles.create.copyHint": "Reuse its current audio setup",
   "profiles.create.copySource": "Profile to copy",
   "profiles.create.enableMic": "Enable microphone",
-  "profiles.create.enableMicHint": "Create the processed Sonux microphone with this profile",
+  "profiles.create.enableMicHint": "Create the processed Mixweave microphone with this profile",
   "profiles.create.action": "Create and activate",
   "profiles.delete.title": "Delete profile “{{profile}}”?",
   "profiles.delete.action": "Delete profile",
   "profiles.delete.body": "This permanently deletes the profile and all of its application links. Its saved channel layout, levels, routing, outputs, EQ and mixes cannot be recovered.",
-  "profiles.delete.activeBody": "This is the active profile, so Sonux will activate another profile before deleting it.",
+  "profiles.delete.activeBody": "This is the active profile, so Mixweave will activate another profile before deleting it.",
   "profiles.rename.title": "Rename “{{profile}}”",
   "profiles.rename.action": "Rename profile",
   "profiles.menu.autoLoads": "auto-loads with {{device}}",
@@ -519,10 +620,10 @@ export const ENGLISH_TRANSLATIONS = {
   "balance.pickSide": "{{channel}} - click to pick the channel on this side",
   "balance.label": "{{first}} and {{second}} balance",
   "balance.values": "{{first}} {{firstValue}}%, {{second}} {{secondValue}}%",
-  "balance.slideHint": "{{first}} {{firstValue}}% / {{second}} {{secondValue}}% - slide toward a side to duck the other",
+  "balance.slideHint": "{{first}} {{firstValue}}% / {{second}} {{secondValue}}% - drag or scroll to balance; scroll up favors {{first}}, down favors {{second}}. Shift: fine adjustment. Double-click: center",
   "meters.disabledHint": "Live meters are disabled in Settings",
   "meters.peakHint": "Peak level in dBFS - tick at −6, red above −3, light latches on clipping",
-  "onboarding.flow.apps": "Apps",
+  "onboarding.flow.apps": "Applications",
   "onboarding.flow.channels": "Channels",
   "onboarding.flow.ears": "Your ears",
   "onboarding.flow.mixes": "Mixes",
@@ -546,11 +647,11 @@ export const ENGLISH_TRANSLATIONS = {
   "onboarding.setup.title": "Build your audio setup",
   "onboarding.setup.body": "Channels keep game, chat and media separate. Set their levels and outputs in Mixer, and create mixes when OBS or another recorder needs its own feed.",
   "onboarding.apps.title": "Route games and apps",
-  "onboarding.apps.body": "Open Apps or drag a running app onto a Mixer channel. Sonux remembers where that app belongs the next time it starts.",
+  "onboarding.apps.body": "Open Apps or drag a running app onto a Mixer channel. Mixweave remembers where that app belongs the next time it starts.",
   "onboarding.profiles.title": "Keep complete profiles",
   "onboarding.profiles.body": "Profiles remember channels, levels, routing, outputs, EQ, mixes and microphone settings. Manage them on Profiles, and optionally link a game or app to activate one automatically.",
   "onboarding.microphone.title": "Process your microphone",
-  "onboarding.microphone.body": "Optional: shape your mic with a noise gate, compressor and limiter. Then choose the Sonux microphone in Discord, OBS or another voice app.",
+  "onboarding.microphone.body": "Optional: shape your mic with a noise gate, compressor and limiter. Then choose the Mixweave microphone in Discord, OBS or another voice app.",
   "onboarding.replay.title": "That's the tour",
   "onboarding.replay.body": "Channels, apps, profiles and the mic are all live - your setup is untouched.",
   "onboarding.choice.title": "How do you want to start?",
@@ -559,7 +660,7 @@ export const ENGLISH_TRANSLATIONS = {
   "onboarding.choice.ready.body": "Game, Chat, Media and Aux - ready to drop apps onto",
   "onboarding.choice.custom.title": "I'll build my own",
   "onboarding.choice.custom.body": "One Main channel - add the rest as you go",
-  "onboarding.dialogLabel": "Welcome to Sonux",
+  "onboarding.dialogLabel": "Welcome to Mixweave",
 } as const;
 
 export type TranslationKey = keyof typeof ENGLISH_TRANSLATIONS;
@@ -606,6 +707,7 @@ const INTERPOLATION_PATTERN = /{{\s*([A-Za-z][A-Za-z0-9_]*)\s*}}/g;
 const DISALLOWED_TEXT_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]|<\/?[A-Za-z][^>]*>/;
 const englishKeys = new Set<string>(Object.keys(ENGLISH_TRANSLATIONS));
 const registeredPacks = new Map<string, LanguagePack>();
+const bundledPacks = new Map<string, LanguagePack>();
 const registryListeners = new Set<() => void>();
 let registryRevision = 0;
 
@@ -734,6 +836,22 @@ export function registerCustomLanguagePack(value: unknown): LanguagePack {
   return pack;
 }
 
+/** Registers translations shipped inside the app. Custom packs for the same locale override them key by key. */
+export function registerBundledLanguagePacks(values: readonly unknown[]): void {
+  for (const value of values) {
+    const { pack, warnings } = validateLanguagePackWithWarnings(value);
+    if (warnings.length > 0) throw new Error(`Bundled language pack ${pack.locale} is invalid: ${warnings[0]}`);
+    bundledPacks.set(pack.locale.toLowerCase(), pack);
+  }
+  registryRevision += 1;
+  registryListeners.forEach((listener) => listener());
+}
+
+function findPack(locale: string): LanguagePack | undefined {
+  const key = locale.toLowerCase();
+  return registeredPacks.get(key) ?? bundledPacks.get(key);
+}
+
 export function clearCustomLanguagePacks(): void {
   if (registeredPacks.size === 0) return;
   registeredPacks.clear();
@@ -766,12 +884,17 @@ export function getLanguagePackRevision(): number {
 }
 
 export function listAvailableLocales(): AvailableLocale[] {
+  const packs = new Map<string, AvailableLocale>();
+  for (const [key, pack] of bundledPacks) packs.set(key, { ...localeInfo(pack), source: "bundled" });
+  for (const [key, pack] of registeredPacks) packs.set(key, { ...localeInfo(pack), source: "custom" });
   return [
     { version: 1, locale: ENGLISH_LOCALE, name: "English", nativeName: "English", direction: "ltr", source: "bundled" },
-    ...[...registeredPacks.values()]
-      .map(({ version, locale, name, nativeName, direction }) => ({ version, locale, name, nativeName, direction, source: "custom" as const }))
-      .sort((left, right) => left.nativeName.localeCompare(right.nativeName)),
+    ...[...packs.values()].sort((left, right) => left.nativeName.localeCompare(right.nativeName)),
   ];
+}
+
+function localeInfo({ version, locale, name, nativeName, direction }: LanguagePack): LanguagePackMetadata {
+  return { version, locale, name, nativeName, direction };
 }
 
 function findRegisteredLocale(requestedLocale: string): string | null {
@@ -782,12 +905,12 @@ function findRegisteredLocale(requestedLocale: string): string | null {
     return null;
   }
   if (canonical.toLowerCase() === ENGLISH_LOCALE || canonical.toLowerCase().startsWith("en-")) return ENGLISH_LOCALE;
-  const exact = registeredPacks.get(canonical.toLowerCase());
+  const exact = findPack(canonical);
   if (exact) return exact.locale;
   const parts = canonical.toLowerCase().split("-");
   while (parts.length > 1) {
     parts.pop();
-    const parent = registeredPacks.get(parts.join("-"));
+    const parent = findPack(parts.join("-"));
     if (parent) return parent.locale;
   }
   return null;
@@ -804,11 +927,12 @@ export function resolveLocale(preference: LocalePreference, systemLocales: reado
 
 export function directionForLocale(locale: string): TextDirection {
   if (locale.toLowerCase() === ENGLISH_LOCALE) return "ltr";
-  return registeredPacks.get(locale.toLowerCase())?.direction ?? "ltr";
+  return findPack(locale)?.direction ?? "ltr";
 }
 
 export function translate(locale: string, key: TranslationKey, variables: InterpolationVariables = {}): string {
-  const translated = registeredPacks.get(locale.toLowerCase())?.translations[key];
+  const translated = registeredPacks.get(locale.toLowerCase())?.translations[key]
+    ?? bundledPacks.get(locale.toLowerCase())?.translations[key];
   const template = typeof translated === "string"
     ? translated
     : translated && typeof variables.count === "number"

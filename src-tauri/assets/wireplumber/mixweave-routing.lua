@@ -1,9 +1,9 @@
--- Generated and installed by Sonux. The route data is supplied dynamically
+-- Generated and installed by Mixweave. The route data is supplied dynamically
 -- through PipeWire metadata; this script only owns pre-link policy.
 
 local cutils = require ("common-utils")
 local lutils = require ("linking-utils")
-local log = Log.open_topic ("sonux-routing")
+local log = Log.open_topic ("mixweave-routing")
 
 local ROUTES_KEY = "sonux.routes.v1"
 local ROUTES_ACK_KEY = "sonux.routes.ack.v1"
@@ -98,10 +98,10 @@ local function assigned_sink (routes, stream_props)
 end
 
 -- Acknowledge only after this WirePlumber process has received the metadata
--- change. Sonux waits for this before treating an assignment transaction as
--- committed, so a newly created stream cannot overtake the route update.
+-- change. Mixweave waits for this before treating an assignment transaction
+-- as committed, so a newly created stream cannot overtake the route update.
 SimpleEventHook {
-  name = "sonux/acknowledge-routes",
+  name = "mixweave/acknowledge-routes",
   interests = {
     EventInterest {
       Constraint { "event.type", "=", "metadata-changed" },
@@ -132,10 +132,11 @@ SimpleEventHook {
 }:register ()
 
 SimpleEventHook {
-  name = "sonux/find-assigned-target",
-  -- Sonux assignments are stronger than role, filter, default and best-node
-  -- policy. Order before every stock selector so another hook cannot win the
-  -- first-target race merely because component registration order changed.
+  name = "mixweave/find-assigned-target",
+  -- Mixweave assignments are stronger than role, filter, default and
+  -- best-node policy. Order before every stock selector so another hook
+  -- cannot win the first-target race merely because component registration
+  -- order changed.
   before = {
     "linking/find-media-role-target",
     "linking/find-defined-target",
@@ -182,22 +183,23 @@ SimpleEventHook {
           flags.can_passthrough = can_passthrough
           flags.has_defined_target = true
           event:set_data ("target", candidate)
-          log:info (si, "selected assigned Sonux target " .. sink_name)
+          log:info (si, "selected assigned Mixweave target " .. sink_name)
         end
         return
       end
     end
 
-    -- Never invent a fallback target here. If Sonux has not published its
+    -- Never invent a fallback target here. If Mixweave has not published its
     -- channel node yet, the stock policy remains responsible for the stream.
-    log:warning (si, "assigned Sonux target is unavailable: " .. sink_name)
+    log:warning (si, "assigned Mixweave target is unavailable: " .. sink_name)
   end,
 }:register ()
 
 -- Presence is separate from the route acknowledgement. Publish it only after
--- the selector is registered, so Sonux cannot observe a ready component before
--- pre-link routing is actually active. A newly upgraded Sonux keeps using its
--- live-router fallback until the next login or session-manager restart.
+-- the selector is registered, so Mixweave cannot observe a ready component
+-- before pre-link routing is actually active. A newly upgraded Mixweave
+-- keeps using its live-router fallback until the next login or
+-- session-manager restart.
 local ready_metadata = cutils.get_default_metadata_object ()
 if ready_metadata then
   ready_metadata:set (0, ROUTES_READY_KEY, "Spa:String", "1")

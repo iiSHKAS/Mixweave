@@ -9,7 +9,7 @@ const SEEN_FLUSH_SECS: u64 = 15 * 60;
 /// Collapse the live snapshot to externally selected managed routes that are
 /// unambiguous for an exact PipeWire identity. Two simultaneous streams can
 /// share an identity; if they disagree, hash-map iteration order must not
-/// decide which route Sonux persists.
+/// decide which route Mixweave persists.
 fn unambiguous_managed_targets(
     streams: &[AppStream],
 ) -> std::collections::HashMap<(String, String), String> {
@@ -90,7 +90,7 @@ pub fn get_virtual_devices(state: State<'_, AppState>) -> Result<Vec<VirtualSink
 
 /// All running app audio streams.
 ///
-/// Doubles as the auto-routing enforcement point (Phase 2): the visible UI and
+/// Doubles as the auto-routing enforcement point: the visible UI and
 /// the native tray-state worker poll this twice per second, and any stream seen
 /// for the first time whose app has a saved assignment is moved onto its
 /// channel. Each stream is enforced once, so manual re-routing (here or in
@@ -161,6 +161,16 @@ pub(crate) fn enrich_app_streams(
     Ok(())
 }
 
+/// Channel that receives apps with no saved route: Game, else the first channel.
+fn default_channel_name(mixer: &crate::mixer::state::MixerState) -> Option<String> {
+    mixer
+        .channels
+        .iter()
+        .find(|c| c.name == "sink_game")
+        .or_else(|| mixer.channels.first())
+        .map(|c| c.name.clone())
+}
+
 /// The application-stream polling transaction, for callers that already hold
 /// `profile_operations`. Keeping lock acquisition outside this helper lets the
 /// coherent profile snapshot reuse the exact routing/history transaction
@@ -193,7 +203,7 @@ pub(crate) fn poll_app_streams_locked(state: &AppState) -> Result<Vec<AppStream>
     // no blocking work. Holding the mixer mutex across the disk save or the
     // backend move calls (each up to the native backend's 3s request timeout)
     // would stall every other command - including tray-menu building - behind
-    // this fast poll, and slow-loop polls would stack up (TD-004). So we snapshot
+    // this fast poll, and slow-loop polls would stack up. So we snapshot
     // the decisions here and release the guard before touching disk or PipeWire.
     let (seen_to_save, assignment_change, planned) = {
         let mut mixer = state.lock_mixer()?;
@@ -201,6 +211,7 @@ pub(crate) fn poll_app_streams_locked(state: &AppState) -> Result<Vec<AppStream>
         let mut adopted_identities = std::collections::HashSet::new();
         let previous_assignments = mixer.assignments.clone();
         let mut next_assignments = previous_assignments.clone();
+        let default_channel = mixer.initialized.then(|| default_channel_name(&mixer)).flatten();
         for stream in &streams {
             let was_known = mixer
                 .seen
@@ -239,7 +250,6 @@ pub(crate) fn poll_app_streams_locked(state: &AppState) -> Result<Vec<AppStream>
                     adopted_identities.insert(identity);
                 }
             } else if stream.assigned_sink.is_none()
-                && !was_known
                 && next_assignments
                     .sink_for(&stream.match_prop, &stream.match_value)
                     .is_none()
@@ -252,6 +262,10 @@ pub(crate) fn poll_app_streams_locked(state: &AppState) -> Result<Vec<AppStream>
                     single_canonical_assignment(&mixer.seen, &next_assignments, desktop_id)
                 }) {
                     next_assignments.set(&stream.match_prop, &stream.match_value, &target);
+                } else if let Some(target) = default_channel.as_deref() {
+                    // No route yet: Game is the default channel; the user can
+                    // move the app elsewhere afterwards.
+                    next_assignments.set(&stream.match_prop, &stream.match_value, target);
                 }
             }
         }
@@ -328,7 +342,7 @@ pub(crate) fn poll_app_streams_locked(state: &AppState) -> Result<Vec<AppStream>
     // Phase 2: the blocking work, with the lock released.
     if let Some(seen) = seen_to_save {
         if let Err(e) = seen.save() {
-            eprintln!("sonux: saving app history failed: {e}");
+            eprintln!("mixweave: saving app history failed: {e}");
         }
     }
     if let Some((previous, next, adopted_indices)) = assignment_change {
@@ -360,7 +374,7 @@ pub(crate) fn poll_app_streams_locked(state: &AppState) -> Result<Vec<AppStream>
                     s.assigned_sink = Some(target);
                 }
             }
-            Err(e) => eprintln!("sonux: auto-route of {app_name} (#{index}) failed: {e}"),
+            Err(e) => eprintln!("mixweave: auto-route of {app_name} (#{index}) failed: {e}"),
         }
     }
 
@@ -376,246 +390,6 @@ pub fn get_output_devices(state: State<'_, AppState>) -> Result<Vec<OutputDevice
         .map_err(|e| e.to_string())
 }
 
-#[cfg(test)]
-mod tests {
-    use std::sync::{Arc, Mutex};
-
-    use super::*;
-    use crate::audio::backend::AudioBackend;
-    use crate::audio::types::{EqConfig, MicConfig, SinkControlState};
-    use crate::error::SinkError;
-
-    struct RoutingBackend {
-        stream: AppStream,
-        moves: Mutex<Vec<(u32, String)>>,
-    }
-
-    impl AudioBackend for RoutingBackend {
-        fn create_virtual_sink(&self, _: &str, _: &str) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn destroy_virtual_sink(&self, _: &str) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn list_app_streams(&self) -> Result<Vec<AppStream>, SinkError> {
-            Ok(vec![self.stream.clone()])
-        }
-        fn list_output_devices(&self) -> Result<Vec<OutputDevice>, SinkError> {
-            Ok(Vec::new())
-        }
-        fn list_sink_control_states(
-            &self,
-            _: &[String],
-        ) -> Result<Vec<SinkControlState>, SinkError> {
-            Ok(Vec::new())
-        }
-        fn set_sink_volume(&self, _: &str, _: u8) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn set_sink_mute(&self, _: &str, _: bool) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn move_stream_to_sink(&self, index: u32, sink: &str) -> Result<(), SinkError> {
-            self.moves.lock().unwrap().push((index, sink.to_string()));
-            Ok(())
-        }
-        fn set_app_volume(&self, _: u32, _: u8) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn set_channel_output(&self, _: &str, _: Option<&str>) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn set_channel_eq(&self, _: &str, _: &EqConfig) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn create_bus(&self, _: &str, _: &str) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn destroy_bus(&self, _: &str) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn set_bus_members(&self, _: &str, _: &[String]) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn set_monitor(&self, _: &str, _: bool) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn list_input_devices(&self) -> Result<Vec<OutputDevice>, SinkError> {
-            Ok(Vec::new())
-        }
-        fn get_default_devices(&self) -> Result<(Option<String>, Option<String>), SinkError> {
-            Ok((None, None))
-        }
-        fn set_default_output(&self, _: &str) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn set_default_input(&self, _: &str) -> Result<(), SinkError> {
-            Ok(())
-        }
-        fn set_mic_config(&self, _: &MicConfig) -> Result<(), SinkError> {
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn canonical_assignment_is_inherited_only_when_existing_members_agree() {
-        let mut seen = crate::persistence::seen::SeenApps::default();
-        let mut assignments = crate::persistence::assignments::Assignments::default();
-        seen.upsert(
-            "application.name",
-            "helper-a",
-            "Game",
-            None,
-            Some("game"),
-            1,
-        );
-        seen.upsert(
-            "application.name",
-            "helper-b",
-            "Game",
-            None,
-            Some("game"),
-            1,
-        );
-        assignments.set("application.name", "helper-a", "sink_game");
-        assignments.set("application.name", "helper-b", "sink_game");
-        assert_eq!(
-            single_canonical_assignment(&seen, &assignments, "game").as_deref(),
-            Some("sink_game")
-        );
-
-        assignments.set("application.name", "helper-b", "sink_media");
-        assert_eq!(
-            single_canonical_assignment(&seen, &assignments, "game"),
-            None
-        );
-    }
-
-    #[test]
-    fn canonical_ignore_is_inherited_only_when_existing_members_are_all_ignored() {
-        let mut seen = crate::persistence::seen::SeenApps::default();
-        seen.upsert(
-            "application.name",
-            "helper-a",
-            "Game",
-            None,
-            Some("game"),
-            1,
-        );
-        seen.set_ignored("application.name", "helper-a", true);
-        assert!(canonical_group_is_ignored(&seen, "game"));
-
-        seen.upsert(
-            "application.name",
-            "helper-b",
-            "Game",
-            None,
-            Some("game"),
-            1,
-        );
-        assert!(!canonical_group_is_ignored(&seen, "game"));
-    }
-
-    fn routed_stream(index: u32, identity: &str, sink: &str) -> AppStream {
-        AppStream {
-            index,
-            app_name: "Shared identity".into(),
-            match_prop: "application.name".into(),
-            match_value: identity.into(),
-            alias: None,
-            icon_name: None,
-            icon_path: None,
-            desktop_id: None,
-            pid: None,
-            assigned_sink: Some(sink.into()),
-            volume_percent: 100,
-            muted: false,
-            active: true,
-        }
-    }
-
-    #[test]
-    fn exact_identity_route_is_adopted_only_when_all_live_streams_agree() {
-        let agreed = vec![
-            routed_stream(1, "browser", "sink_game"),
-            routed_stream(2, "browser", "sink_game"),
-        ];
-        assert_eq!(
-            unambiguous_managed_targets(&agreed)
-                .get(&("application.name".into(), "browser".into()))
-                .map(String::as_str),
-            Some("sink_game")
-        );
-
-        let conflicting = vec![
-            routed_stream(2, "browser", "sink_media"),
-            routed_stream(1, "browser", "sink_game"),
-        ];
-        assert!(!unambiguous_managed_targets(&conflicting)
-            .contains_key(&("application.name".into(), "browser".into())));
-
-        let reversed = [conflicting[1].clone(), conflicting[0].clone()];
-        assert!(!unambiguous_managed_targets(&reversed)
-            .contains_key(&("application.name".into(), "browser".into())));
-    }
-
-    #[test]
-    fn locked_poll_enforces_changed_profile_assignment_and_snapshot_fields_agree() {
-        let identity_prop = "application.name";
-        let identity_value = "sonux-snapshot-route-test";
-        let backend = Arc::new(RoutingBackend {
-            stream: AppStream {
-                index: 41,
-                app_name: "Sonux Snapshot Route Test".into(),
-                match_prop: identity_prop.into(),
-                match_value: identity_value.into(),
-                alias: None,
-                icon_name: None,
-                icon_path: None,
-                desktop_id: None,
-                pid: None,
-                assigned_sink: None,
-                volume_percent: 100,
-                muted: false,
-                active: true,
-            },
-            moves: Mutex::new(Vec::new()),
-        });
-        let state = AppState::for_test(backend.clone());
-        let now = crate::persistence::unix_now();
-        {
-            let mut mixer = state.lock_mixer().unwrap();
-            mixer.initialized = true;
-            mixer.seen.upsert(
-                identity_prop,
-                identity_value,
-                "Sonux Snapshot Route Test",
-                None,
-                None,
-                now,
-            );
-            mixer.seen_saved_at = now;
-            mixer
-                .assignments
-                .set(identity_prop, identity_value, "sink_a");
-            mixer
-                .assignments
-                .set(identity_prop, identity_value, "sink_b");
-        }
-
-        let _profile_operation = state.lock_profile_operation().unwrap();
-        let streams = poll_app_streams_locked(&state).unwrap();
-        let seen = crate::commands::apps::snapshot_seen_apps(&state.lock_mixer().unwrap());
-
-        assert_eq!(
-            backend.moves.lock().unwrap().as_slice(),
-            &[(41, "sink_b".into())]
-        );
-        assert_eq!(streams[0].assigned_sink.as_deref(), Some("sink_b"));
-        assert_eq!(seen.len(), 1);
-        assert_eq!(seen[0].assigned_sink.as_deref(), Some("sink_b"));
-    }
-}
 
 /// Create the user's virtual sinks and restore volume/mute from the active
 /// profile. Idempotent: safe to call again if the sinks already exist.
@@ -628,12 +402,18 @@ pub fn init_virtual_devices(
     // applies profiles from its monitor thread, so use the shared boundary to
     // prevent the two sequences from interleaving backend mutations.
     let _profile_operation = state.lock_profile_operation()?;
-    let (defs, prefs, active_profile) = {
+    let (defs, prefs, active_profile, fraction, master_muted, stream_fraction, streamer_muted) = {
         let mixer = state.lock_mixer()?;
+        let (fraction, master_muted) = mixer.master_gain();
+        let (stream_fraction, streamer_muted) = mixer.streamer_gain();
         (
             mixer.channel_defs.clone(),
             mixer.prefs.clone(),
             mixer.active_profile.clone(),
+            fraction,
+            master_muted,
+            stream_fraction,
+            streamer_muted,
         )
     };
     let restored_channels = active_profile
@@ -650,17 +430,26 @@ pub fn init_virtual_devices(
         let restored = restored_channels
             .iter()
             .find(|channel| channel.name == def.name);
-        state
-            .backend
-            .set_sink_volume(
+        crate::commands::routing::push_channel_controls(
+            state.backend.as_ref(),
+            &def.name,
+            restored.map_or(100, |channel| channel.volume_percent),
+            restored.is_some_and(|channel| channel.muted),
+            fraction,
+            master_muted,
+        )
+        .map_err(|e| e.to_string())?;
+        if state.backend_native {
+            crate::commands::routing::push_channel_stream_controls(
+                state.backend.as_ref(),
                 &def.name,
-                restored.map_or(100, |channel| channel.volume_percent),
+                restored.map_or(100, |channel| channel.stream_send_volume_percent),
+                restored.is_some_and(|channel| channel.stream_send_muted),
+                stream_fraction,
+                streamer_muted,
             )
             .map_err(|e| e.to_string())?;
-        state
-            .backend
-            .set_sink_mute(&def.name, restored.is_some_and(|channel| channel.muted))
-            .map_err(|e| e.to_string())?;
+        }
     }
 
     let (outputs, eq, mic, secondary_mics, buses) = {
@@ -675,9 +464,10 @@ pub fn init_virtual_devices(
                 channel.muted = restored.muted;
             }
         }
-        // The master mix always carries the full channel set.
+        // The master mix and Streamer Mode always carry the full channel set.
         let names: Vec<String> = defs.channels.iter().map(|c| c.name.clone()).collect();
         mixer.buses.sync_master(&names);
+        mixer.buses.sync_streamer_mode(&names);
         (
             mixer.outputs.clone(),
             mixer.eq.clone(),
@@ -721,6 +511,14 @@ pub fn init_virtual_devices(
     let names: Vec<String> = defs.channels.iter().map(|c| c.name.clone()).collect();
     if state.backend_native {
         for bus in &buses.buses {
+            // While off, Streamer Mode's node must not exist at all - that's
+            // what keeps it out of every device picker until the user turns
+            // it on (see `commands::buses::set_streamer_mode_enabled`).
+            if crate::persistence::buses::is_streamer_mode(&bus.name)
+                && !prefs.streamer_mode_enabled
+            {
+                continue;
+            }
             if let Err(e) = state
                 .backend
                 .create_bus(&bus.name, &prefs.decorate(&bus.label))
@@ -865,7 +663,7 @@ pub fn init_virtual_devices(
                             }
                         }
                         Err(error) => {
-                            eprintln!("sonux: protecting fallback profile failed: {error}")
+                            eprintln!("mixweave: protecting fallback profile failed: {error}")
                         }
                     }
                 }

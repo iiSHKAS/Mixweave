@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mixweave overlay - design drafts</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+@font-face { font-family: "Fira Code"; font-weight: 500; src: url("../src/styles/fonts/FiraCode-Medium.ttf"); }
+@font-face { font-family: "Fira Code"; font-weight: 700; src: url("../src/styles/fonts/FiraCode-Bold.ttf"); }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Fira Code", ui-monospace, monospace; background: #1a1c20; color: #e8eaee; }
+header.tools { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 14px 24px; background: #1a1c20ee; border-bottom: 1px solid #333840; backdrop-filter: blur(6px); }
+header.tools h1 { font-size: 15px; margin: 0 14px 0 0; font-weight: 700; }
+header.tools button { font: inherit; font-size: 12px; font-weight: 500; color: #e8eaee; background: #2a2e35; border: 1px solid #3d434c; border-radius: 9px; padding: 8px 14px; cursor: pointer; }
+header.tools button:hover { background: #343943; }
+header.tools button.on { background: #FF6F39; border-color: #FF6F39; color: #fff; }
+main { padding: 8px 24px 60px; max-width: 1180px; margin: 0 auto; }
+section.draft { margin-top: 34px; }
+section.draft h2 { font-size: 14px; margin: 0; letter-spacing: .04em; }
+section.draft p { margin: 4px 0 14px; font-size: 12px; color: #9aa1ac; line-height: 1.5; max-width: 90ch; }
+.tag { display: inline-block; margin-inline-start: 8px; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; letter-spacing: .06em; vertical-align: 1px; }
+.tag.ok { background: #1f4d34; color: #7be0a4; }
+.tag.partial { background: #3d3a1f; color: #e6d36b; }
+.tag.limit { background: #4d3b1f; color: #f0c26b; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.stage { position: relative; height: 210px; border-radius: 16px; overflow: hidden; display: grid; place-items: center; }
+.stage.light { background: linear-gradient(135deg, #B4B6B8, #C4C6C8); }
+.stage.dark { background: linear-gradient(135deg, #202327, #2B3036); }
+section[data-design="f"] .stage, section[data-design="d"] .stage { height: 300px; }
+.stage .cap { position: absolute; left: 12px; top: 10px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
+.stage.light .cap { color: #25282C; } .stage.dark .cap { color: #ADB5C0; }
+
+/* ---------- palettes (mirror the app's Light / Dark Mode) ---------- */
+.stage.light { --surface: rgba(209,212,215,.96); --border: #A4ABB3; --fg: #25282C; --fg2: #5D6570; --track: #B0B3B7; --tile: rgba(255,111,57,.16); --tile-fg: #E4571F; --shadow: 0 14px 34px rgba(32,39,51,.30); --glass: rgba(255,255,255,.35); }
+.stage.dark  { --surface: rgba(50,57,65,.96);   --border: #586371; --fg: #EEF0F3; --fg2: #ADB5C0; --track: #252A30; --tile: rgba(255,111,57,.22); --tile-fg: #FF8558; --shadow: 0 14px 34px rgba(0,0,0,.5); --glass: rgba(255,255,255,.06); }
+.card { --accent: #FF6F39; --accent2: #FF9A62; --danger: #EF4444; --danger2: #F87171; --p: .72;
+  color: var(--fg); font-family: "Fira Code", monospace; transform-origin: center; }
+.card.muted { --accent: var(--danger); --accent2: var(--danger2); }
+.card svg { display: block; }
+.enter { animation: cardIn .7s cubic-bezier(.16,1,.3,1) both; }
+@keyframes cardIn { from { opacity: 0; transform: translateX(46px) scale(.96); } to { opacity: 1; transform: none; } }
+.exit  { animation: cardOut .28s cubic-bezier(.5,0,.75,0) both; }
+@keyframes cardOut { to { opacity: 0; transform: translateX(46px) scale(.97); } }
+
+/* ============ A. GLOW ============ */
+.a { width: 330px; padding: 16px 18px 18px; border-radius: 20px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.a .head { display: flex; align-items: center; gap: 12px; }
+.a .tile { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; background: var(--tile); color: var(--tile-fg); transition: background .3s, color .3s; }
+.card.muted .tile { background: rgba(239,68,68,.2); color: var(--danger); }
+.a .lab { flex: 1; font-weight: 700; font-size: 14px; }
+.a .lab small { display: block; margin-top: 2px; font-weight: 500; font-size: 10px; letter-spacing: .08em; color: var(--fg2); text-transform: uppercase; }
+.a .num { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card.muted .num { color: var(--fg2); }
+.a .bar { position: relative; height: 10px; margin-top: 16px; border-radius: 6px; background: var(--track); }
+.a .fill { position: absolute; inset: 0; width: calc(var(--p) * 100%); border-radius: 6px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .45s cubic-bezier(.22,1,.36,1); overflow: hidden; }
+.a .fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%); transform: translateX(-100%); animation: sheen 1.8s ease-in-out infinite; }
+@keyframes sheen { 60%, 100% { transform: translateX(100%); } }
+.a .knob { position: absolute; top: 50%; left: calc(var(--p) * 100%); width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent), 0 3px 10px rgba(0,0,0,.35); transition: left .45s cubic-bezier(.22,1,.36,1); }
+.tick { position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: var(--fg2); opacity: .7; left: var(--tick, 100%); }
+
+/* ============ B. CAPSULE ============ */
+.b { display: flex; align-items: center; gap: 12px; width: 372px; padding: 10px 18px 10px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.b .disc { position: relative; width: 48px; height: 48px; flex: 0 0 48px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--accent2), var(--accent)); box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 45%, transparent); transition: background .3s, box-shadow .3s; }
+.b .disc::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; }
+.b .disc.pulse::after { animation: pulse .6s ease-out; }
+@keyframes pulse { from { opacity: .8; transform: scale(.85); } to { opacity: 0; transform: scale(1.25); } }
+.b .mid { flex: 1; min-width: 0; }
+.b .lab { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+.b .lab span:last-child { color: var(--fg2); font-weight: 500; }
+.b .bar { position: relative; height: 12px; border-radius: 999px; background: var(--track); overflow: hidden; }
+.b .fill { position: absolute; inset: 0; width: calc(var(--p) * 100%); border-radius: 999px; background: repeating-linear-gradient(115deg, rgba(255,255,255,.22) 0 8px, transparent 8px 16px), linear-gradient(90deg, var(--accent), var(--accent2)); background-size: 32px 100%, 100% 100%; animation: stripes 1s linear infinite; transition: width .45s cubic-bezier(.22,1,.36,1); }
+@keyframes stripes { to { background-position: 32px 0, 0 0; } }
+.card.muted .b .fill, .b.muted .fill { animation-play-state: paused; }
+.b .num { width: 64px; text-align: right; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card.muted .b .num, .b.muted .num { color: var(--fg2); }
+
+/* ============ C. SEGMENTS ============ */
+.c { width: 340px; padding: 16px 18px 18px; border-radius: 18px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.c .head { display: flex; align-items: baseline; justify-content: space-between; }
+.c .lab { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; }
+.c .lab svg { color: var(--tile-fg); transition: color .3s; } .card.muted .c .lab svg, .c.muted .lab svg { color: var(--danger); }
+.c .num { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.c.muted .num { color: var(--fg2); }
+.c .segs { display: flex; gap: 4px; margin-top: 14px; height: 26px; align-items: flex-end; }
+.c .seg { flex: 1; height: 100%; border-radius: 4px; background: var(--track); transform-origin: bottom; transition: background .25s, transform .3s cubic-bezier(.34,1.56,.64,1), box-shadow .25s; transition-delay: var(--d, 0ms); }
+.c .seg.on { background: var(--seg); transform: scaleY(1); box-shadow: 0 0 10px color-mix(in srgb, var(--seg) 55%, transparent); }
+.c .seg:not(.on) { transform: scaleY(.55); }
+
+/* ============ D. RING ============ */
+.d { width: 176px; padding: 18px 16px 16px; border-radius: 26px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); text-align: center; }
+.d .ring { position: relative; width: 116px; height: 116px; margin: 0 auto; }
+.d .ring > svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.d .ring .trk { stroke: var(--track); }
+.d .ring .val { stroke: url(#grad); stroke-linecap: round; transition: stroke-dashoffset .5s cubic-bezier(.22,1,.36,1); }
+.card.muted .d .ring .val, .d.muted .ring .val { stroke: var(--danger); }
+.d .ring .mid { position: absolute; inset: 0; display: grid; place-items: center; color: var(--tile-fg); }
+.d.muted .ring .mid { color: var(--danger); }
+.d .num { margin-top: 10px; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.d.muted .num { color: var(--fg2); }
+.d .lab { margin-top: 6px; font-size: 12px; font-weight: 500; color: var(--fg2); }
+/* ============ E. AURORA ============ */
+.e { position: relative; width: 340px; padding: 16px 18px 18px; border-radius: 22px; background: var(--surface); box-shadow: var(--shadow); }
+.e::before { content: ""; position: absolute; inset: 0; border-radius: 22px; padding: 1.5px; background: linear-gradient(120deg, var(--accent), transparent 35%, var(--accent2) 70%, transparent); background-size: 250% 250%; animation: borderFlow 4s ease-in-out infinite alternate; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+@keyframes borderFlow { to { background-position: 100% 100%; } }
+.e .head { display: flex; align-items: center; gap: 12px; }
+.e .tile { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--tile-fg); background: var(--tile); transition: background .3s, color .3s; }
+.card.muted .e .tile { background: rgba(239,68,68,.2); color: var(--danger); }
+.e .lab { flex: 1; font-size: 13px; font-weight: 700; }
+.e .lab small { display: block; font-weight: 500; font-size: 10px; letter-spacing: .1em; color: var(--fg2); text-transform: uppercase; margin-top: 2px; }
+.e .num { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent)); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: flow 3s linear infinite; }
+@keyframes flow { to { background-position: -200% 0; } }
+.card.muted .e .num { animation: none; background: none; color: var(--fg2); -webkit-background-clip: border-box; }
+.e .bar { position: relative; height: 12px; margin-top: 16px; border-radius: 8px; background: var(--track); }
+.e .fill { position: absolute; inset: 0; width: calc(var(--p) * 100%); border-radius: 8px; background: linear-gradient(90deg, #FF6F39, #FF9A62, #FFC26B, #FF9A62, #FF6F39); background-size: 200% 100%; animation: flow 2.2s linear infinite; box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent); transition: width .5s cubic-bezier(.22,1,.36,1); }
+.card.muted .e .fill { animation: none; background: linear-gradient(90deg, var(--danger), var(--danger2)); }
+.e .fill::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 14px; border-radius: 8px; background: #fff; opacity: .85; filter: blur(3px); }
+
+/* ============ F. VERTICAL FADER ============ */
+.f { width: 96px; padding: 16px 0 16px; border-radius: 30px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.f .disc { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--tile); color: var(--tile-fg); transition: background .3s, color .3s; }
+.card.muted .f .disc { background: rgba(239,68,68,.2); color: var(--danger); }
+.f .rail { position: relative; width: 14px; height: 116px; border-radius: 8px; background: var(--track); }
+.f .fill { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--p) * 100%); border-radius: 8px; background: linear-gradient(0deg, var(--accent), var(--accent2)); transition: height .5s cubic-bezier(.22,1,.36,1); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent); }
+.f .knob { position: absolute; left: 50%; bottom: calc(var(--p) * 100%); width: 24px; height: 24px; margin: 0 0 -12px -12px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent), 0 3px 10px rgba(0,0,0,.35); transition: bottom .5s cubic-bezier(.22,1,.36,1); }
+.f .num { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card.muted .f .num { color: var(--fg2); }
+.f .name { max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--fg2); letter-spacing: .06em; text-transform: uppercase; }
+
+/* ============ G. WAVES ============ */
+.g { display: flex; align-items: center; gap: 14px; width: 360px; padding: 14px 18px; border-radius: 20px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.g .tile { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 12px; display: grid; place-items: center; background: var(--tile); color: var(--tile-fg); }
+.card.muted .g .tile { background: rgba(239,68,68,.2); color: var(--danger); }
+.g .mid { flex: 1; min-width: 0; }
+.g .name { font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+.g .bars { display: flex; align-items: center; gap: 3px; height: 30px; }
+.g .b1 { flex: 1; height: 100%; border-radius: 3px; background: var(--track); transform: scaleY(.28); transform-origin: center; transition: background .3s; }
+.g .b1.on { background: linear-gradient(0deg, var(--accent), var(--accent2)); animation: bounce var(--dur, 900ms) ease-in-out var(--del, 0ms) infinite alternate; }
+.card.muted .g .b1.on { animation-play-state: paused; background: var(--danger); transform: scaleY(.4); }
+@keyframes bounce { from { transform: scaleY(.3); } to { transform: scaleY(1); } }
+.g .num { width: 62px; text-align: right; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card.muted .g .num { color: var(--fg2); }
+
+/* ============ H. MINIMAL ============ */
+.h { display: flex; align-items: center; gap: 12px; width: 320px; padding: 12px 20px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.h .ico { color: var(--tile-fg); display: grid; place-items: center; transition: color .3s; }
+.card.muted .h .ico { color: var(--danger); }
+.h .line { position: relative; flex: 1; height: 4px; border-radius: 2px; background: var(--track); }
+.h .fill { position: absolute; inset: 0; width: calc(var(--p) * 100%); border-radius: 2px; background: var(--accent); transition: width .5s cubic-bezier(.22,1,.36,1), background .3s; }
+.h .dot { position: absolute; top: 50%; left: calc(var(--p) * 100%); width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); animation: halo 1.6s ease-out infinite; transition: left .5s cubic-bezier(.22,1,.36,1), background .3s; }
+@keyframes halo { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
+.card.muted .h .dot { animation: none; }
+.h .num { width: 56px; text-align: right; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.card.muted .h .num { color: var(--fg2); }
+.h .name { position: absolute; }
+
+/* ============ I. BOLD ACCENT ============ */
+.i { position: relative; width: 330px; padding: 16px 18px 18px; border-radius: 22px; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 16px 36px color-mix(in srgb, var(--accent) 42%, transparent); overflow: hidden; transition: background .3s, box-shadow .3s; }
+.i::after { content: ""; position: absolute; width: 180px; height: 180px; right: -50px; top: -80px; border-radius: 50%; background: rgba(255,255,255,.16); pointer-events: none; }
+.i .head { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; }
+.i .disc { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.22); color: #fff; }
+.i .lab { flex: 1; font-size: 14px; font-weight: 700; }
+.i .lab small { display: block; margin-top: 2px; font-size: 10px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; opacity: .8; }
+.i .num { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; text-shadow: 0 2px 10px rgba(0,0,0,.18); }
+.i .bar { position: relative; z-index: 1; height: 10px; margin-top: 16px; border-radius: 6px; background: rgba(255,255,255,.3); }
+.i .fill { position: absolute; inset: 0; width: calc(var(--p) * 100%); border-radius: 6px; background: #fff; box-shadow: 0 0 14px rgba(255,255,255,.6); transition: width .5s cubic-bezier(.22,1,.36,1); }
+
+/* ============ J. ARC GAUGE ============ */
+.j { width: 240px; padding: 16px 16px 14px; border-radius: 26px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); text-align: center; }
+.j svg { width: 100%; height: auto; display: block; }
+.j .trk { stroke: var(--track); }
+.j .val { stroke: url(#gradj); stroke-linecap: round; transition: stroke-dashoffset .5s cubic-bezier(.22,1,.36,1); }
+.card.muted .j .val { stroke: var(--danger); }
+.j .mid { margin-top: -50px; position: relative; }
+.j .num { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.card.muted .j .num { color: var(--fg2); }
+.j .row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; font-size: 12px; font-weight: 700; }
+.j .row .ico { color: var(--tile-fg); display: grid; place-items: center; }
+.card.muted .j .row .ico { color: var(--danger); }
+
+</style>
+</head>
+<body>
+<header class="tools">
+  <h1>Mixweave overlay · draft designs</h1>
+  <button id="down">Volume −</button>
+  <button id="up">Volume +</button>
+  <button id="mute">Mute</button>
+  <button id="boost">Above 100%</button>
+  <button id="auto" class="on">Auto demo</button>
+  <button id="replay">Replay slide-in</button>
+</header>
+<main>
+  <section class="draft" data-design="a">
+    <h2>A · Glow<span class="tag ok">GNOME-READY</span></h2>
+    <p>Icon tile, name and a big percentage; a thick gradient bar with a soft sheen sweeping across the fill and a glowing knob at its end. Everything eases when the level changes. Above 100% a marker shows where 100% sits. Closest to the app's own look.</p>
+    <div class="pair"><div class="stage light"><span class="cap">Light Mode</span></div><div class="stage dark"><span class="cap">Dark Mode</span></div></div>
+  </section>
+  <section class="draft" data-design="b">
+    <h2>B · Capsule<span class="tag ok">GNOME-READY</span></h2>
+    <p>A compact pill (like a phone or console volume popup): a round accent disc that pulses on every change, name and level above a slim striped bar whose stripes keep moving while you hold the key. The least space of the four.</p>
+    <div class="pair"><div class="stage light"><span class="cap">Light Mode</span></div><div class="stage dark"><span class="cap">Dark Mode</span></div></div>
+  </section>
+  <section class="draft" data-design="c">
+    <h2>C · Segments<span class="tag ok">GNOME-READY</span></h2>
+    <p>A hardware-meter look: 24 segments that pop up in a quick wave as the level rises and drop back as it falls; colour warms toward red past 100%. Big number on the right. Reads as an audio tool at a glance.</p>
+    <div class="pair"><div class="stage light"><span class="cap">Light Mode</span></div><div class="stage dark"><span class="cap">Dark Mode</span></div></div>
+  </section>
+  <section class="draft" data-design="d">
+    <h2>D · Ring<span class="tag limit">X11 WINDOW ONLY*</span></h2>
+    <p>A circular gauge with the icon in the middle and the number under it; the ring fills with a gradient. Most striking, but GNOME Shell's widgets cannot draw an arc without custom drawing code, so on GNOME/Wayland it would need extra work (*possible with a Cairo drawing area, not tested).</p>
+    <div class="pair"><div class="stage light"><span class="cap">Light Mode</span></div><div class="stage dark"><span class="cap">Dark Mode</span></div></div>
+  </section>
+  <h3 style="margin:56px 0 0;font-size:13px;letter-spacing:.14em;color:#9aa1ac;text-transform:uppercase">More concepts</h3>
+  <section class="draft" data-design="e">
+    <h2>E · Aurora<span class="tag partial">PARTIAL</span></h2>
+    <p>A glass card with a softly glowing gradient border that slowly drifts, a fill made of a flowing warm gradient with a bright head, and a percentage painted in the same moving gradient. The richest of the set; on GNOME the moving gradient would be a simpler two-tone fill.</p>
+    <div class="pair"><div class="stage light"><span class="cap">Light Mode</span></div><div class="stage dark"><span class="cap">Dark Mode</span></div></div>
+  </section>
+  <section class="draft" data-design="f">
+    <h2>F · Vertical fader<span class="tag ok">GNOME-READY</span></h2>
+    <p>A tall slim pill for the screen edge: icon on top, a vertical rail that fills upward with a glowing knob, the number and the channel name underneath. It looks and behaves like a real mixer fader, so it also hints at what the shortcut is changing.</p>
+    <div class="pair"><div class="stage light"><span class="cap">Light Mode</span></div><div class="stage dark"><span class="cap">Dark Mode</span></div></div>
+  </section>
+  <section class="draft" data-design="g">
+    <h2>G · Waves<span class="tag partial">PARTIAL</span></h2>
+    <p>An equaliser-style strip: 28 bars that bounce like live audio in the lit part (up to the current level) and stay dim beyond it. Feels alive while you hold the key; on GNOME each bar animates separately, so it needs more code.</p>
+    <div class="pair"><div class="stage light"><span class="cap">Light Mode</span></div><div class="stage dark"><span class="cap">Dark Mode</span></div></div>
+  </section>
+  <section class="draft" data-design="h">
+    <h2>H · Minimal<span class="tag ok">GNOME-READY</span></h2>
+    <p>An almost-invisible pill: a small icon, a thin line and a glowing dot that pulses a halo as it moves, with a light number at the end. The calmest option - good if you do not want anything loud over a fullscreen game.</p>
+    <div class="pair"><div class="stage light"><span class="cap">Light Mode</span></div><div class="stage dark"><span class="cap">Dark Mode</span></div></div>
+  </section>
+  <section class="draft" data-design="i">
+    <h2>I · Bold accent<span class="tag ok">GNOME-READY</span></h2>
+    <p>A full accent-coloured card (the same in Light and Dark Mode) with white text, a translucent white track and a bright fill. Hard to miss and very modern; turns fully red when muted.</p>
+    <div class="pair"><div class="stage light"><span class="cap">Light Mode</span></div><div class="stage dark"><span class="cap">Dark Mode</span></div></div>
+  </section>
+  <section class="draft" data-design="j">
+    <h2>J · Arc gauge<span class="tag limit">X11 WINDOW ONLY*</span></h2>
+    <p>A half-circle gauge like a speedometer, the arc filling with a gradient and the number resting inside it. Striking, but needs arc drawing, so it is limited to the X11 window (same restriction as the ring).</p>
+    <div class="pair"><div class="stage light"><span class="cap">Light Mode</span></div><div class="stage dark"><span class="cap">Dark Mode</span></div></div>
+  </section>
+</main>
+
+<script>
+const ICON = {
+  on: '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 4V6L7 10H3zm13.5 2a4.5 4.5 0 0 0-2.5-4.03v8.05A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>',
+  off: '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.8 8.8 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/></svg>',
+  small: (on) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="${on ? 'M3 10v4h4l5 4V6L7 10H3zm13.5 2a4.5 4.5 0 0 0-2.5-4.03v8.05A4.5 4.5 0 0 0 16.5 12z' : 'M4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z'}"/></svg>`,
+};
+const LABELS = ['Game', 'Chat • Stream', 'Mixweave Mic', 'Master'];
+const state = { value: 72, muted: false, max: 100, label: 'Game', shown: 72 };
+
+const builders = {
+  a: () => `<div class="a"><div class="head"><span class="tile"></span><div class="lab"><span class="name"></span><small>Volume</small></div><span class="num">0</span></div><div class="bar"><div class="fill"></div><div class="knob"></div><span class="tick"></span></div></div>`,
+  b: () => `<div class="b"><span class="disc"></span><div class="mid"><div class="lab"><span class="name"></span><span class="st">Volume</span></div><div class="bar"><div class="fill"></div></div></div><span class="num">0</span></div>`,
+  c: () => `<div class="c"><div class="head"><span class="lab"><span class="ico"></span><span class="name"></span></span><span class="num">0</span></div><div class="segs"></div></div>`,
+  d: () => `<div class="d"><div class="ring"><svg viewBox="0 0 120 120"><defs><linearGradient id="grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9A62"/><stop offset="1" stop-color="#FF6F39"/></linearGradient></defs><circle class="trk" cx="60" cy="60" r="50" fill="none" stroke-width="10"/><circle class="val" cx="60" cy="60" r="50" fill="none" stroke-width="10" stroke-dasharray="314.16" stroke-dashoffset="314.16"/></svg><span class="mid"></span></div><div class="num">0</div><div class="lab"></div></div>`,
+  e: () => `<div class="e"><div class="head"><span class="tile"></span><div class="lab"><span class="name"></span><small>Volume</small></div><span class="num">0</span></div><div class="bar"><div class="fill"></div></div></div>`,
+  f: () => `<div class="f"><span class="disc"></span><div class="rail"><div class="fill"></div><div class="knob"></div></div><span class="num">0</span><span class="name"></span></div>`,
+  g: () => `<div class="g"><span class="tile"></span><div class="mid"><div class="name"></div><div class="bars"></div></div><span class="num">0</span></div>`,
+  h: () => `<div class="h"><span class="ico"></span><div class="line"><div class="fill"></div><div class="dot"></div></div><span class="num">0</span></div>`,
+  i: () => `<div class="i"><div class="head"><span class="disc"></span><div class="lab"><span class="name"></span><small>Volume</small></div><span class="num">0</span></div><div class="bar"><div class="fill"></div></div></div>`,
+  j: () => `<div class="j"><svg viewBox="0 0 200 118"><defs><linearGradient id="gradj" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FF9A62"/><stop offset="1" stop-color="#FF6F39"/></linearGradient></defs><path class="trk" d="M 20 104 A 80 80 0 0 1 180 104" fill="none" stroke-width="14" stroke-linecap="round"/><path class="val" d="M 20 104 A 80 80 0 0 1 180 104" fill="none" stroke-width="14" stroke-dasharray="251.33" stroke-dashoffset="251.33"/></svg><div class="mid"><div class="num">0</div><div class="row"><span class="ico"></span><span class="name"></span></div></div></div>`,
+};
+const SEGS = 24;
+const BARS = 28;
+const cards = [];
+document.querySelectorAll('section.draft').forEach((sec) => {
+  const design = sec.dataset.design;
+  sec.querySelectorAll('.stage').forEach((stage) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'card enter';
+    wrap.innerHTML = builders[design]();
+    stage.appendChild(wrap);
+    const segs = wrap.querySelector('.segs');
+    const bars = wrap.querySelector('.bars');
+    if (bars) for (let i = 0; i < BARS; i++) { const b = document.createElement('i'); b.className = 'b1'; b.style.setProperty('--dur', (520 + Math.random() * 700) + 'ms'); b.style.setProperty('--del', (-Math.random() * 900) + 'ms'); bars.appendChild(b); }
+    if (segs) for (let i = 0; i < SEGS; i++) { const s = document.createElement('i'); s.className = 'seg'; segs.appendChild(s); }
+    cards.push({ design, wrap, segs });
+  });
+});
+
+function segColor(i) { // warm gradient across the meter, red beyond 100 %
+  const t = i / (SEGS - 1);
+  const over = state.max > 100 ? (100 / state.max) : 1;
+  if (t > over) return '#EF4444';
+  const k = t / over;
+  const hue = 24 - k * 12, light = 58 + (1 - k) * 8;
+  return `hsl(${hue} 100% ${light}%)`;
+}
+
+function render() {
+  const p = Math.max(0, Math.min(1, state.value / state.max));
+  const tick = state.max > 100 ? (100 / state.max * 100) + '%' : null;
+  for (const c of cards) {
+    const w = c.wrap;
+    w.style.setProperty('--p', p);
+    w.classList.toggle('muted', state.muted);
+    w.querySelectorAll('.name').forEach((n) => (n.textContent = state.label));
+    const icon = state.muted ? ICON.off : ICON.on;
+    const tile = w.querySelector('.tile'); if (tile) tile.innerHTML = icon;
+    const disc = w.querySelector('.disc'); if (disc) disc.innerHTML = icon;
+    const ico = w.querySelector('.ico'); if (ico) ico.innerHTML = ICON.small(!state.muted);
+    const mid = w.querySelector('.d .mid'); if (mid) mid.innerHTML = icon;
+    const st = w.querySelector('.st'); if (st) st.textContent = state.muted ? 'Muted' : 'Volume';
+    const small = w.querySelector('.a small'); if (small) small.textContent = state.muted ? 'Muted' : 'Volume';
+    const dl = w.querySelector('.d .lab'); if (dl) dl.textContent = state.label + (state.muted ? ' · muted' : '');
+    const tk = w.querySelector('.tick'); if (tk) { tk.style.display = tick ? '' : 'none'; if (tick) tk.style.setProperty('--tick', tick); }
+    const ring = w.querySelector('.d .val'); if (ring) ring.style.strokeDashoffset = 314.16 * (1 - p);
+    if (c.segs) {
+      const lit = Math.round(p * SEGS);
+      [...c.segs.children].forEach((s, i) => {
+        s.style.setProperty('--seg', segColor(i));
+        s.style.setProperty('--d', Math.abs(i - lit) * 8 + 'ms');
+        s.classList.toggle('on', i < lit && !state.muted);
+      });
+      c.segs.parentElement.classList.toggle('muted', state.muted);
+    }
+    const ico2 = w.querySelector('.h .ico, .j .ico'); if (ico2) ico2.innerHTML = ICON.small(!state.muted);
+    const arc = w.querySelector('.j .val'); if (arc) arc.style.strokeDashoffset = 251.33 * (1 - p);
+    const eq = w.querySelector('.g .bars'); if (eq) { const lit = Math.round(p * BARS); [...eq.children].forEach((b, i) => b.classList.toggle('on', i < lit)); }
+    w.querySelectorAll('.b, .c, .d').forEach((n) => n.classList.toggle('muted', state.muted));
+  }
+}
+function pulse() { document.querySelectorAll('.disc').forEach((d) => { d.classList.remove('pulse'); void d.offsetWidth; d.classList.add('pulse'); }); }
+
+// numbers roll toward the target instead of jumping
+function tick() {
+  state.shown += (state.value - state.shown) * 0.22;
+  if (Math.abs(state.value - state.shown) < 0.05) state.shown = state.value;
+  const text = Math.round(state.shown);
+  document.querySelectorAll('.num').forEach((n) => { if (n.textContent !== String(text) + '%') n.textContent = text + '%'; });
+  requestAnimationFrame(tick);
+}
+
+function set(v) { state.value = Math.max(0, Math.min(state.max, Math.round(v))); render(); pulse(); }
+document.getElementById('up').onclick = () => { stopAuto(); state.muted = false; set(state.value + 5); };
+document.getElementById('down').onclick = () => { stopAuto(); set(state.value - 5); };
+document.getElementById('mute').onclick = () => { stopAuto(); state.muted = !state.muted; render(); pulse(); };
+document.getElementById('boost').onclick = (e) => {
+  state.max = state.max === 100 ? 150 : 100; e.target.classList.toggle('on', state.max === 150);
+  state.value = Math.min(state.value, state.max); if (state.max === 150) state.value = Math.max(state.value, 118); render();
+};
+document.getElementById('replay').onclick = () => {
+  cards.forEach(({ wrap }) => { wrap.classList.remove('enter', 'exit'); void wrap.offsetWidth; wrap.classList.add('exit'); });
+  setTimeout(() => cards.forEach(({ wrap }) => { wrap.classList.remove('exit'); void wrap.offsetWidth; wrap.classList.add('enter'); }), 700);
+};
+let autoTimer = null, step = 0;
+function startAuto() {
+  document.getElementById('auto').classList.add('on');
+  autoTimer = setInterval(() => {
+    step++;
+    if (step % 9 === 0) { state.muted = !state.muted; state.label = LABELS[(step / 9) % LABELS.length | 0]; render(); pulse(); return; }
+    state.muted = false;
+    const target = 20 + Math.round(((Math.sin(step * 0.9) + 1) / 2) * (state.max - 25));
+    set(target);
+  }, 900);
+}
+function stopAuto() { clearInterval(autoTimer); autoTimer = null; document.getElementById('auto').classList.remove('on'); }
+document.getElementById('auto').onclick = () => (autoTimer ? stopAuto() : startAuto());
+render(); tick(); startAuto();
+</script>
+</body>
+</html>

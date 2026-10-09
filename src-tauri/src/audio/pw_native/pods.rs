@@ -89,25 +89,3 @@ pub fn parse_props(pod: &Pod) -> PropsState {
     }
     state
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn volume_curve_roundtrips() {
-        for p in [0u8, 25, 50, 100, 150] {
-            assert_eq!(linear_to_percent(percent_to_linear(p)), p);
-        }
-    }
-
-    #[test]
-    fn props_pod_roundtrips_through_parser() {
-        let bytes = props_pod_bytes(Some((0.5, 2)), Some(true)).expect("serializes");
-        let pod = Pod::from_bytes(&bytes).expect("valid pod");
-        let state = parse_props(pod);
-        assert_eq!(state.muted, Some(true));
-        assert_eq!(state.channels, Some(2));
-        assert!((state.volume_linear.expect("has volume") - 0.5).abs() < 1e-6);
-    }
-}

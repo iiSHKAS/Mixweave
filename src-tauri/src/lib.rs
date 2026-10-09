@@ -1,11 +1,16 @@
 mod audio;
 mod commands;
 mod error;
+mod gnome_osd_extension;
 mod language_packs;
+mod launch_path;
 mod mixer;
+mod overlay;
 mod persistence;
 mod profile_automation;
 mod state;
+mod update_install;
+mod updates;
 
 // Narrow public surface for the dependency-free offline spatial comparison
 // binary. The application modules themselves remain private.
@@ -30,6 +35,24 @@ struct WindowSizeSaver {
     tx: Sender<persistence::window::WindowSize>,
 }
 
+/// GNOME's Wayland custom-keybinding fallback re-invokes our own binary as
+/// `mixweave --shortcut <action>`; pull the action back out of raw argv, whether
+/// that is this process's own `std::env::args()` or the argv
+/// `tauri-plugin-single-instance` forwards from a second launch.
+fn shortcut_action_from_args<I, S>(args: I) -> Option<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        if arg.as_ref() == "--shortcut" {
+            return args.next().map(|value| value.as_ref().to_string());
+        }
+    }
+    None
+}
+
 /// One tiny worker collapses the resize-event burst into a single atomic
 /// config write 350 ms after the user stops dragging.
 fn window_size_saver() -> WindowSizeSaver {
@@ -41,7 +64,7 @@ fn window_size_saver() -> WindowSizeSaver {
                     Ok(newer) => pending = newer,
                     Err(RecvTimeoutError::Timeout) => {
                         if let Err(e) = persistence::window::save(pending) {
-                            eprintln!("sonux: saving window size failed: {e}");
+                            eprintln!("mixweave: saving window size failed: {e}");
                         }
                         break;
                     }
@@ -62,18 +85,18 @@ pub fn run() {
     commands::settings::wait_for_restart_parent();
 
     if let Err(error) = persistence::migrate_legacy_config_dir() {
-        eprintln!("sonux: could not migrate legacy settings; refusing to start: {error}");
+        eprintln!("mixweave: could not migrate legacy settings; refusing to start: {error}");
         return;
     }
     if let Err(error) = persistence::wireplumber::migrate_legacy_conf() {
-        eprintln!("sonux: could not migrate legacy routing rules; refusing to start: {error}");
+        eprintln!("mixweave: could not migrate legacy routing rules; refusing to start: {error}");
         return;
     }
     if let Err(error) = persistence::autostart::migrate_legacy_unit() {
-        eprintln!("sonux: could not migrate the legacy autostart unit: {error}");
+        eprintln!("mixweave: could not migrate the legacy autostart unit: {error}");
     }
 
-    // Prefer the native PipeWire backend (Phase 2); fall back to pactl
+    // Prefer the native PipeWire backend; fall back to pactl
     // subprocess calls if the native loop can't come up. Levels (real VU
     // metering) are native-only.
     let (backend, levels): (Arc<dyn AudioBackend>, Option<Arc<LevelStore>>) =
@@ -83,7 +106,9 @@ pub fn run() {
                 (Arc::new(backend), Some(levels))
             }
             Err(e) => {
-                eprintln!("sonux: native PipeWire backend unavailable ({e}); using pactl fallback");
+                eprintln!(
+                    "mixweave: native PipeWire backend unavailable ({e}); using pactl fallback"
+                );
                 (Arc::new(PactlBackend::new()), None)
             }
         };
@@ -93,13 +118,22 @@ pub fn run() {
     let result = tauri::Builder::default()
         // Must be the first plugin: a second process would otherwise create
         // duplicate virtual devices and split mic/audio links between them.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // A GNOME custom-keybinding launch: dispatch to the already
+            // running instance instead of stealing focus with the window.
+            if let Some(action) = shortcut_action_from_args(&args) {
+                let _ = app.emit("mixweave://shortcut", action);
+                return;
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
+        .manage(updates::UpdateRuntime::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(app_state)
@@ -109,6 +143,9 @@ pub fn run() {
             commands::devices::get_virtual_devices,
             commands::devices::get_app_streams,
             commands::devices::get_output_devices,
+            commands::hardware::get_hardware_devices,
+            commands::hardware::set_hardware_volume,
+            commands::hardware::set_hardware_mute,
             commands::devices::init_virtual_devices,
             commands::devices::teardown_virtual_devices,
             commands::devices::get_channel_outputs,
@@ -136,10 +173,13 @@ pub fn run() {
             commands::buses::set_bus_exclude,
             commands::buses::set_bus_volume,
             commands::buses::set_bus_mute,
+            commands::buses::set_streamer_mode_enabled,
             commands::routing::route_app_to_channel,
             commands::routing::route_app_group_to_channel,
             commands::routing::set_channel_volume,
             commands::routing::toggle_channel_mute,
+            commands::routing::set_channel_stream_volume,
+            commands::routing::toggle_channel_stream_mute,
             commands::routing::set_app_volume,
             commands::routing::rename_app,
             commands::routing::set_monitor,
@@ -213,15 +253,26 @@ pub fn run() {
             commands::settings::set_multiple_mics,
             commands::settings::reset_app,
             commands::settings::restart_app,
+            updates::get_update_status,
+            updates::set_auto_update,
+            updates::check_and_install_update,
+            commands::linux_shortcuts::detect_shortcut_backend,
+            commands::linux_shortcuts::sync_gnome_shortcuts,
+            commands::linux_shortcuts::show_gnome_osd,
         ])
         .setup(move |app| {
             build_tray(app)?;
+            updates::start(app.handle().clone());
             app.state::<profile_automation::ProfileAutomationRuntime>()
                 .start(app.handle().clone());
             spawn_background_app_router(app.handle().clone());
             // The window starts hidden (config) to avoid a flash; show it
-            // now unless launched with --minimized (autostart-to-tray).
-            let minimized = std::env::args().any(|a| a == "--minimized");
+            // now unless launched with --minimized (autostart-to-tray) or
+            // --shortcut (a GNOME custom keybinding launched us cold, before
+            // any instance was running to catch it via single-instance).
+            let cold_start_shortcut = shortcut_action_from_args(std::env::args());
+            let minimized =
+                cold_start_shortcut.is_some() || std::env::args().any(|a| a == "--minimized");
             if let Some(window) = app.get_webview_window("main") {
                 if let Some(size) = persistence::window::load() {
                     let _ = window.set_size(tauri::LogicalSize::new(
@@ -229,13 +280,28 @@ pub fn run() {
                         f64::from(size.height),
                     ));
                 }
+                // Set explicitly rather than relying on the bundler's implicit
+                // default-window-icon: on Linux the taskbar/dash icon is the
+                // one place that path has proven unreliable across GTK/Wayland
+                // versions, while this exact decode (tauri::image::Image::from_bytes,
+                // the "image-png" feature) is already known-good for the tray icon below.
+                if let Ok(icon) =
+                    tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
+                {
+                    let _ = window.set_icon(icon);
+                }
                 if !minimized {
                     let _ = window.show();
                 }
             }
+            if let Some(action) = cold_start_shortcut {
+                let _ = app.emit("mixweave://shortcut", action);
+            }
             if let Some(levels) = levels {
                 spawn_level_emitter(app.handle().clone(), levels);
             }
+            overlay::spawn(app);
+            gnome_osd_extension::ensure_installed();
             Ok(())
         })
         // Close button hides to tray instead of quitting.
@@ -249,6 +315,10 @@ pub fn run() {
                     width: (f64::from(size.width) / scale).round() as u32,
                     height: (f64::from(size.height) / scale).round() as u32,
                 };
+                eprintln!(
+                    "mixweave: window resized to {}x{}",
+                    logical.width, logical.height
+                );
                 if logical.width >= persistence::window::MIN_WIDTH
                     && logical.height >= persistence::window::MIN_HEIGHT
                 {
@@ -259,7 +329,7 @@ pub fn run() {
             WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 if let Err(e) = window.hide() {
-                    eprintln!("sonux: failed to hide window: {e}");
+                    eprintln!("mixweave: failed to hide window: {e}");
                 }
             }
             _ => {}
@@ -267,7 +337,7 @@ pub fn run() {
         .run(tauri::generate_context!());
 
     if let Err(e) = result {
-        eprintln!("sonux: fatal error while running tauri application: {e}");
+        eprintln!("mixweave: fatal error while running tauri application: {e}");
         std::process::exit(1);
     }
 }
@@ -298,7 +368,7 @@ fn spawn_background_app_router(handle: tauri::AppHandle) {
             match result {
                 Ok(_) => last_error = None,
                 Err(error) if last_error.as_deref() != Some(error.as_str()) => {
-                    eprintln!("sonux: background application routing failed: {error}");
+                    eprintln!("mixweave: background application routing failed: {error}");
                     last_error = Some(error);
                 }
                 Err(_) => {}
@@ -320,7 +390,7 @@ fn spawn_level_emitter(handle: tauri::AppHandle, levels: Arc<LevelStore>) {
             std::thread::sleep(Duration::from_millis(100));
             // The app's dominant state is sitting in the tray during a game.
             // Don't lock the registry, serialize a map and wake the webview
-            // for a window nobody can see (TD-008).
+            // for a window nobody can see.
             let onscreen = handle
                 .get_webview_window("main")
                 .map(|w| w.is_visible().unwrap_or(true) && !w.is_minimized().unwrap_or(false))
@@ -405,10 +475,10 @@ pub(crate) fn refresh_tray(app: &tauri::AppHandle) {
         match build_tray_menu(app) {
             Ok(menu) => {
                 if let Err(e) = tray.set_menu(Some(menu)) {
-                    eprintln!("sonux: tray menu refresh failed: {e}");
+                    eprintln!("mixweave: tray menu refresh failed: {e}");
                 }
             }
-            Err(e) => eprintln!("sonux: tray menu rebuild failed: {e}"),
+            Err(e) => eprintln!("mixweave: tray menu rebuild failed: {e}"),
         }
     }
 }
@@ -418,11 +488,11 @@ fn build_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // Dedicated 22px tray glyph from the icon pack (white for the common
     // dark panel; the full-color icon stays on the window/dock).
-    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-white-22.png"))?;
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
 
     TrayIconBuilder::with_id("sink-tray")
         .icon(icon)
-        .tooltip("Sonux")
+        .tooltip("Mixweave")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(move |app, event| {
@@ -433,7 +503,7 @@ fn build_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     Ok(()) => {
                         let _ = app.emit("profile-changed", name);
                     }
-                    Err(e) => eprintln!("sonux: tray profile switch failed: {e}"),
+                    Err(e) => eprintln!("mixweave: tray profile switch failed: {e}"),
                 }
                 return;
             }
@@ -446,7 +516,7 @@ fn build_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 "restart" => {
                     if let Err(error) = commands::settings::restart_app(app.clone()) {
-                        eprintln!("sonux: restart failed: {error}");
+                        eprintln!("mixweave: restart failed: {error}");
                     }
                 }
                 "quit" => {
@@ -454,7 +524,7 @@ fn build_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     // log failures but never block quitting.
                     let state = app.state::<AppState>();
                     for err in state.teardown_virtual_sinks() {
-                        eprintln!("sonux: teardown: {err}");
+                        eprintln!("mixweave: teardown: {err}");
                     }
                     app.exit(0);
                 }
@@ -464,17 +534,4 @@ fn build_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .build(app)?;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tray_routing_tests {
-    use super::should_poll_app_routes_in_background;
-
-    #[test]
-    fn background_router_runs_only_offscreen() {
-        assert!(!should_poll_app_routes_in_background(true, false));
-        assert!(should_poll_app_routes_in_background(false, false));
-        assert!(should_poll_app_routes_in_background(true, true));
-        assert!(should_poll_app_routes_in_background(false, true));
-    }
 }

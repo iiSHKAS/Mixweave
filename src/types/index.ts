@@ -48,6 +48,11 @@ export interface VirtualSink {
   muted: boolean;
   /** Whether this channel feeds the Stream Mix source (OBS recording). */
   stream_mix: boolean;
+  /** Independent "Stream" send level (0-150%): what reaches the Streamer
+   *  Mode output, entirely separate from `volume_percent`/`muted` (the
+   *  "Personal" level the user hears). Not the legacy `stream_mix` above. */
+  stream_send_volume_percent: number;
+  stream_send_muted: boolean;
 }
 
 export interface OutputDevice {
@@ -59,7 +64,7 @@ export interface OutputDevice {
 /** Visual-only VU meter refresh policy; audio processing is unaffected. */
 export type MeterMode = "monitor" | "fps_144" | "fps_120" | "fps_100" | "fps_60" | "off";
 
-/** Phase 3 mic chain configuration (mirrors Rust MicConfig). */
+/** Mic chain configuration (mirrors Rust MicConfig). */
 export interface MicConfig {
   /** Stable PipeWire node name; sink_mic is the permanent primary. */
   node_name: string;
@@ -82,10 +87,23 @@ export interface MicConfig {
   comp_threshold_db: number;
   comp_ratio: number;
   limiter_ceiling_db: number;
+  /** Independent "Stream" send gain (0-200%): what reaches this mic's
+   *  Stream companion source, entirely separate from `gain_percent`/`muted`
+   *  (the "Personal" level). Not sent through gate/comp/limiter twice -
+   *  see `MicParams::stream_settings` on the Rust side. */
+  stream_send_gain_percent: number;
+  stream_send_muted: boolean;
+  /** RNNoise noise suppression, ahead of the EQ and dynamics. */
+  denoise_enabled: boolean;
+  /** Share of the cleaned signal mixed in (0-100). */
+  denoise_strength_percent: number;
+  /** Acoustic echo cancellation against the default output's playback. */
+  echo_cancel_enabled: boolean;
 }
 
 /** Default DSP values (markers on the tuning sliders). */
 export const MIC_DSP_DEFAULTS = {
+  denoise_strength_percent: 80,
   gate_threshold_db: -40,
   comp_threshold_db: -18,
   comp_ratio: 3,
@@ -228,7 +246,7 @@ export function busMembers(bus: BusDef, allChannels: string[]): string[] {
     : bus.channels;
 }
 
-/** Profile listing entry (Phase 5: trigger_device auto-loads the profile). */
+/** Profile listing entry (trigger_device auto-loads the profile). */
 export interface ProfileInfo {
   name: string;
   trigger_device: string | null;
@@ -274,5 +292,28 @@ export const MAX_VOLUME = 150;
 export const MAX_MIC_GAIN = 200;
 /** Levels key for the mic chain. */
 export const MIC_LEVEL_KEY = "sink_mic";
-/** Node name of the always-on master mix (carries every channel). */
+/** Node name of the always-on master mix: carries every channel for
+ *  recorders, and its volume/mute are the true overall listening controls,
+ *  scaling and silencing every channel's own live output. */
 export const MASTER_BUS = "sink_stream";
+/** Node name of the always-on Streamer Mode mix: mirrors `MASTER_BUS`
+ *  exactly, but for every channel's independent "Stream" send instead of
+ *  its "Personal" level - entirely separate gain path (see
+ *  `VirtualSink.stream_send_volume_percent`). */
+export const STREAMER_MODE_BUS = "sink_streamer_mode";
+/** `LevelStore` key for a channel's independent Stream meter - must match
+ *  `stream_send::stream_meter_key` on the Rust side exactly. Distinct from
+ *  the channel's own name (its Personal meter's key) so the Stream lane's
+ *  VU meter reacts to that lane's own gain/mute instead of mirroring
+ *  Personal's. */
+export function streamMeterKey(channelName: string): string {
+  return `${channelName}__stream`;
+}
+/** Node name of a mic's independent Stream companion source - must match
+ *  `mic::stream_mic_node_name` on the Rust side exactly. A genuinely
+ *  separate, independently selectable virtual mic (unlike a channel's
+ *  hidden Stream send), so it can also be monitored on its own via
+ *  `toggleMonitor` like any other node. */
+export function streamMicNodeName(micNodeName: string): string {
+  return `${micNodeName}_stream`;
+}

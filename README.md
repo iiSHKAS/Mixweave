@@ -1,31 +1,31 @@
-# Sonux
+# Mixweave
 
-**Sonux — SteelSeries Sonar meets Linux.**
+**Mixweave — SteelSeries Sonar meets Linux.**
 
 > [!IMPORTANT]
-> **AI-assisted development disclosure:** I maintain Sonux and have used
+> **AI-assisted development disclosure:** I maintain Mixweave and have used
 > OpenAI Codex for implementation support, code review, documentation, testing,
 > release packaging, and licensing and redistribution checks. I choose which
 > suggested changes are included; Codex does not independently maintain or
 > publish the project.
 
 > [!CAUTION]
-> **Security and third-party software:** I recommend reviewing Sonux itself,
+> **Security and third-party software:** I recommend reviewing Mixweave itself,
 > its install and build scripts, and every third-party package or library
 > before installing or running them. Check the source and publisher, requested
 > permissions, package signatures or checksums when available, and only use
 > software you trust. This is good practice for all software, not something
-> unique to Sonux.
+> unique to Mixweave.
 
-Sonux is a Linux-native gaming audio router and mixer built on PipeWire.
+Mixweave is a Linux-native gaming audio router and mixer built on PipeWire.
 It provides per-application channels, recordable mixes, microphone processing,
 parametric EQ, and optional 7.1-to-binaural spatial audio.
 
-Sonux builds on [Sink](https://github.com/NC1107/sink). See
+Mixweave builds on [Sink](https://github.com/NC1107/sink). See
 [ATTRIBUTION.md](ATTRIBUTION.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 for upstream and bundled-asset notices.
 
-Sonux is an independent project and is not affiliated with or endorsed by
+Mixweave is an independent project and is not affiliated with or endorsed by
 SteelSeries.
 
 ## What's new in 1.2.0
@@ -36,9 +36,9 @@ profiles, and microphone processing. Related PipeWire streams are resolved to
 one canonical application identity so routing, hiding, drag-and-drop, and
 inactive-history actions apply consistently to the complete application.
 
-Sonux can now load optional user-maintained language packs with safe English
+Mixweave can now load optional user-maintained language packs with safe English
 fallbacks. Audio startup is also more reliable: a WirePlumber pre-link policy
-routes remembered applications into their Sonux channel before their first
+routes remembered applications into their Mixweave channel before their first
 audio reaches a physical output, removing the brief full-volume onset that
 could occur when a browser stream returned after being idle.
 
@@ -47,19 +47,19 @@ information.
 
 ## Project status and community
 
-I originally built Sonux as a small personal learning project because I liked
+I originally built Mixweave as a small personal learning project because I liked
 how SteelSeries Sonar worked on Windows and wanted a similar experience on
 Linux. Sink was the closest visually pleasing alternative I found, but it was
-missing some settings I wanted. Sonux would not exist without Sink: most of the
+missing some settings I wanted. Mixweave would not exist without Sink: most of the
 credit for the original application and its foundation belongs to its creator,
 NC1107. My work expands that foundation with the controls and audio features I
 wanted from a Sonar-like Linux application.
 
-There is no fixed release schedule. I may update Sonux from time to time and
+There is no fixed release schedule. I may update Mixweave from time to time and
 intend to prioritize known security issues and serious bugs, but users should
 not expect continuous feature development or guaranteed support.
 
-Forks are welcome. Feel free to adapt Sonux to your audio setup or continue its
+Forks are welcome. Feel free to adapt Mixweave to your audio setup or continue its
 development in another direction. Please retain the required GPL and
 third-party notices when redistributing a fork.
 
@@ -88,50 +88,58 @@ welcome.
   identity.
 - Control channel volume, mute, output device, EQ, and playback processing.
 - Create recordable mixes for OBS and other capture software.
-- Process one or more microphone channels with gain, EQ, gate, compressor, and limiter.
+- Process one or more microphone channels with AI noise suppression, echo
+  cancellation, gain, EQ, gate, compressor, and limiter.
 - Save profiles, switch them automatically by linked applications or output
   devices, and use optional global mute shortcuts.
 - Create and restore configuration backups.
 - Render Game and Media 7.1 channels to binaural stereo for headphones.
 - Load optional custom interface translations with per-entry English fallback.
 
-## How Sonux works
+## How Mixweave works
 
-Sonux builds its mixer on PipeWire. Applications using PulseAudio compatibility
+Mixweave builds its mixer on PipeWire. Applications using PulseAudio compatibility
 or native PipeWire appear in the audio graph and can be assigned to Game,
-Chat, Media, Aux, or user-created channels. Sonux publishes remembered routes
+Chat, Media, Aux, or user-created channels. Mixweave publishes remembered routes
 to a small WirePlumber policy hook, allowing a returning stream to select its
 assigned virtual channel before WirePlumber creates its first playback link.
 The regular live router remains available as a recovery path.
 
-Each channel has independent volume, output routing, and parametric EQ. Sonux
+Each channel has independent volume, output routing, and parametric EQ. Mixweave
 also creates recordable mixes that applications such as OBS can select as
 audio sources. The microphone path is processed separately with gain, EQ,
 noise gate, compressor, and limiter stages.
 
 Game and Media can expose stable eight-channel devices in the standard 7.1
-order. With headphone spatial audio enabled, Sonux filters each virtual speaker
+order. With headphone spatial audio enabled, Mixweave filters each virtual speaker
 for the left and right ears and combines the eight channels into binaural
 stereo. If spatial processing is disabled or its HRTF data cannot be loaded,
-Sonux uses a conventional stereo downmix so channels are not silently lost.
+Mixweave uses a conventional stereo downmix so channels are not silently lost.
+
+## Languages
+
+Mixweave ships with English, Arabic (العربية, right-to-left), Russian
+(Русский) and Simplified Chinese (简体中文). It follows your system language
+by default; choose another under **Settings → Appearance → Language**.
+English is the fallback for every missing translation. The bundled translations
+live in [`src/locales`](src/locales) and corrections are welcome.
 
 ## Custom languages
 
-English is the complete built-in language and the fallback for every missing
-translation. Sonux loads optional user-maintained JSON language packs from
-`$XDG_CONFIG_HOME/sonux/locales` (normally `~/.config/sonux/locales`). Download
+Any other language can be added with a custom pack. Mixweave loads optional user-maintained JSON language packs from
+`$XDG_CONFIG_HOME/mixweave/locales` (normally `~/.config/mixweave/locales`). Download
 the linked [`custom-example.json`](src/locales/custom-example.json), save a copy
 in that folder under a new filename, then update its locale information and
 translate the values you want to replace.
 
-From a Sonux source checkout, the equivalent commands are:
+From a Mixweave source checkout, the equivalent commands are:
 
 ```bash
-mkdir -p ~/.config/sonux/locales
-cp src/locales/custom-example.json ~/.config/sonux/locales/my-language.json
+mkdir -p ~/.config/mixweave/locales
+cp src/locales/custom-example.json ~/.config/mixweave/locales/my-language.json
 ```
 
-Restart Sonux after saving, then choose the language in **Settings →
+Restart Mixweave after saving, then choose the language in **Settings →
 Appearance → Language**. Partial packs are supported, unknown or unsafe
 entries are ignored, and named placeholders such as `{{profile}}` must be
 preserved. Pluralized entries may use CLDR plural keys, and right-to-left packs
@@ -142,25 +150,25 @@ backend error details remain English for now.
 
 ### Mixer
 
-![Sonux mixer with master, application, and microphone channels](docs/screenshots/sonux-mixer.png)
+![Mixweave mixer with master, application, and microphone channels](docs/screenshots/mixweave-mixer.png)
 
 ### Game equalizer
 
-![Sonux game channel equalizer and spatial audio controls](docs/screenshots/sonux-game-equalizer.png)
+![Mixweave game channel equalizer and spatial audio controls](docs/screenshots/mixweave-game-equalizer.png)
 
 ### Spatial audio
 
-![Sonux 7.1 virtual speaker layout and spatial audio controls](docs/screenshots/sonux-spatial-audio.png)
+![Mixweave 7.1 virtual speaker layout and spatial audio controls](docs/screenshots/mixweave-spatial-audio.png)
 
 ### Microphone processing
 
-![Sonux microphone equalizer and processing controls](docs/screenshots/sonux-microphone.png)
+![Mixweave microphone equalizer and processing controls](docs/screenshots/mixweave-microphone.png)
 
 ## Installation
 
 Prebuilt Linux packages are available from
-[GitHub Releases](https://github.com/Haxinpro/Sonux/releases). You can also
-build Sonux from source using the instructions below.
+[GitHub Releases](https://github.com/iishkas/Mixweave/releases). You can also
+build Mixweave from source using the instructions below.
 
 ### From a downloaded folder
 
@@ -170,13 +178,13 @@ Open a terminal in the extracted folder and run:
 ./install.sh
 ```
 
-This builds Sonux and installs it for the current user under `~/.local`. It
+This builds Mixweave and installs it for the current user under `~/.local`. It
 does not use `sudo` and does not install system packages.
 
 ### From GitHub
 
 ```bash
-git clone https://github.com/Haxinpro/Sonux.git && cd Sonux && ./install.sh
+git clone https://github.com/iishkas/Mixweave.git && cd Sonux && ./install.sh
 ```
 
 ### Uninstall
@@ -188,7 +196,7 @@ but its settings are kept.
 ./uninstall.sh
 ```
 
-Configuration is stored as plain JSON under `~/.config/sonux`.
+Configuration is stored as plain JSON under `~/.config/mixweave`.
 
 ### Prebuilt packages
 
@@ -198,38 +206,38 @@ Configuration is stored as plain JSON under `~/.config/sonux`.
 > PipeWire with PulseAudio compatibility and WirePlumber 0.5 or newer.
 
 Download the packages and `SHA256SUMS` file from the
-[latest GitHub release](https://github.com/Haxinpro/Sonux/releases/latest).
+[latest GitHub release](https://github.com/iishkas/Mixweave/releases/latest).
 Using the stable latest-release page keeps these instructions current when a
 new version is published.
 
 | Format | Intended systems | Installation command |
 | --- | --- | --- |
-| `.rpm` | Fedora, openSUSE | `sudo dnf install ./Sonux-*.x86_64.rpm` |
-| `.deb` | Ubuntu 26.04+; compatible Debian/Mint releases | `sudo apt install ./Sonux_*_amd64.deb` |
-| Arch package | Arch Linux and derivatives | `sudo pacman -U ./sonux-bin-*-x86_64.pkg.tar.zst` |
-| AppImage | Other distributions | `chmod +x Sonux_*_amd64.AppImage && ./Sonux_*_amd64.AppImage` |
+| `.rpm` | Fedora, openSUSE | `sudo dnf install ./Mixweave-*.x86_64.rpm` |
+| `.deb` | Ubuntu 26.04+; compatible Debian/Mint releases | `sudo apt install ./Mixweave_*_amd64.deb` |
+| Arch package | Arch Linux and derivatives | `sudo pacman -U ./mixweave-bin-*-x86_64.pkg.tar.zst` |
+| AppImage | Other distributions | `chmod +x Mixweave_*_amd64.AppImage && ./Mixweave_*_amd64.AppImage` |
 
 To uninstall a package-managed installation:
 
 | Format | Uninstall command |
 | --- | --- |
-| `.rpm` | `sudo dnf remove sonux` |
-| `.deb` | `sudo apt remove sonux` |
-| Arch package | `sudo pacman -Rns sonux-bin` |
+| `.rpm` | `sudo dnf remove mixweave` |
+| `.deb` | `sudo apt remove mixweave` |
+| Arch package | `sudo pacman -Rns mixweave-bin` |
 
 The AppImage is not installed system-wide; remove its downloaded file when you
 no longer want it. Package removal and deleting the AppImage keep personal
-settings under `~/.config/sonux`.
+settings under `~/.config/mixweave`.
 
 ## Requirements and build dependencies
 
-Package names vary between distributions. Sonux requires these components:
+Package names vary between distributions. Mixweave requires these components:
 
 ### Runtime requirements
 
 | Component | Purpose |
 | --- | --- |
-| PipeWire | Provides the native audio graph used by Sonux |
+| PipeWire | Provides the native audio graph used by Mixweave |
 | PipeWire PulseAudio compatibility (`pipewire-pulse`) | Lets PulseAudio applications and `pactl` communicate with PipeWire |
 | WirePlumber 0.5 or newer | Manages PipeWire devices, links, and routing rules |
 | `pactl` (`pulseaudio-utils` on Debian-based systems) | Provides the automatic fallback audio backend |
@@ -267,7 +275,7 @@ sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev l
 ```
 
 Ubuntu 24.04 provides WirePlumber 0.4 in its standard repositories, below
-Sonux's current 0.5 minimum, so it is not listed as compatible.
+Mixweave's current 0.5 minimum, so it is not listed as compatible.
 
 Development commands:
 
@@ -275,8 +283,6 @@ Development commands:
 npm ci
 npm run build
 npm run tauri dev
-npm test
-cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Disk usage and build cleanup
@@ -292,7 +298,7 @@ development checks; exact sizes vary by toolchain and distribution.
 | `src-tauri/gen` | About 0.3 MiB | Tauri-generated data |
 | `target/release` | About 3.7 GiB | Release build and packaging |
 | `target/debug` | About 9.1 GiB | Development builds, tests, and linting |
-| Final Sonux binary | About 33 MiB | Release build |
+| Final Mixweave binary | About 33 MiB | Release build |
 | Generated `.deb` package | About 18 MiB | Debian package build |
 
 A release build can use several GiB while compiling, and development commands
@@ -302,14 +308,14 @@ review the generated directories listed above. They are not needed by the copy
 installed under `~/.local` and are recreated by a later build.
 
 Use your preferred file manager or build-tool cleanup facilities to inspect
-and remove only generated data you recognize. If Sonux came from an extracted
+and remove only generated data you recognize. If Mixweave came from an extracted
 download and you do not plan to edit its source, the entire extracted folder
 can be moved to the desktop Trash after the installed application has been
 tested. Keep a Git clone if you want to pull updates or work on the project.
 
 > [!WARNING]
 > Do not remove directories that are shared with other projects, replaced by
-> links, or located outside the Sonux checkout. Review every selected path and
+> links, or located outside the Mixweave checkout. Review every selected path and
 > the complete contents of the desktop Trash before permanently deleting
 > anything.
 
@@ -323,10 +329,10 @@ it reaches each ear. Those small timing and frequency differences are what let
 headphones create the impression that a sound is in front, beside, or behind
 the listener instead of directly inside their head.
 
-Sonux embeds the 48 kHz `NF_LIB_HRTF_LFE.sofa` dataset from the
+Mixweave embeds the 48 kHz `NF_LIB_HRTF_LFE.sofa` dataset from the
 [Aalto University near-field HRTF database](https://doi.org/10.5281/zenodo.7316545).
 The dataset contains measurements for 196 source positions at four distances.
-Sonux uses the 0.2-metre measurements for its 7.1 virtual speaker positions.
+Mixweave uses the 0.2-metre measurements for its 7.1 virtual speaker positions.
 `libmysofa` loads and interpolates the SOFA measurement data, while FFTW
 performs the real-time convolution that applies the resulting filters to the
 audio. The dataset is licensed under CC BY 4.0; its creators and publication
@@ -348,7 +354,17 @@ matches the games, voices, music, or other audio they want to evaluate. To
 replace a bundled file directly, keep its existing filename and provide
 headerless 48 kHz stereo signed 16-bit little-endian PCM (`.s16le`). Published
 forks should document the source and license of every replacement. No audio
-from sample libraries that prohibit redistribution is included in Sonux.
+from sample libraries that prohibit redistribution is included in Mixweave.
+
+### Microphone noise suppression and echo cancellation
+
+Optional noise suppression uses [RNNoise](https://gitlab.xiph.org/xiph/rnnoise)
+through the pure-Rust `nnnoiseless` crate; optional echo cancellation uses
+WebRTC's AEC3 through the pure-Rust `sonora` crates. Both are BSD-3-Clause and
+run in-process on 10 ms frames at 48 kHz, so they add about 10 ms of delay and
+need no extra packages. Echo cancellation compares the microphone with what the
+default output device plays, so it is meant for speakers, not headphones. The
+license texts are in [third_party/licenses](third_party/licenses).
 
 ### Interface resources
 
@@ -356,14 +372,37 @@ The interface bundles Fira Code under the SIL Open Font License and Material
 Symbols under Apache-2.0. A complete overview of bundled material and its
 licenses is available in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+## Fractional display scaling on Linux
+
+On Wayland, Mixweave's AppImage prefers native Wayland rendering so that
+XWayland does not enlarge a low-resolution window on monitors scaled to 125%
+or 150%. GTK/WebKit and the compositor can still introduce some softness with
+fractional scaling. Restart the application completely after updating.
+
+For a driver-specific compatibility problem, launch with
+`MIXWEAVE_GDK_BACKEND=x11 ./mixweave.appimage`. This override survives the
+AppImage GTK hook, which can overwrite the standard `GDK_BACKEND` variable.
+X11 sessions keep their existing backend behavior.
+
 ## License
 
-Sonux is distributed under [GPL-3.0-only](LICENSE). Bundled CC0 and CC-BY
+Mixweave is distributed under [GPL-3.0-only](LICENSE). Bundled CC0 and CC-BY
 assets retain their own notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-The intention is for Sonux and redistributed modifications to remain free and
+The intention is for Mixweave and redistributed modifications to remain free and
 open source. GPL-3.0 permits anyone to use, modify, share, and commercially
 redistribute the software, while requiring distributors of GPL-covered builds
 and derivatives to preserve the GPL freedoms and corresponding source-code
-availability. Because Sonux is derived from GPL-licensed Sink, an additional
+availability. Because Mixweave is derived from GPL-licensed Sink, an additional
 "no selling" restriction cannot be imposed on the project.
+
+## AppImage updates
+
+The AppImage edition checks public GitHub releases after startup and every six
+hours while running. Automatic updates are enabled by default and can be disabled
+in Settings → Updates. A notification precedes automatic download and signed
+installation; Mixweave never restarts automatically or intentionally interrupts
+audio to apply an update. GitHub receives normal request metadata such as your
+IP address; no audio or mixer settings are uploaded. Other package formats do not
+self-update. Maintainer setup and release assets are documented in
+[ابديت قيتهب](قيتهب%20ابديت/ابديت%20قيتهب.md).

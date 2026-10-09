@@ -1,0 +1,6 @@
+{
+  "uuid": "sonux-osd@sonux.dev",
+  "name": "Mixweave OSD",
+  "description": "Shows Mixweave's on-screen mute/volume popup so it stays visible over fullscreen games instead of being trapped inside Mixweave's own window. Installed and enabled automatically by Mixweave; safe to disable if you don't want it.",
+  "shell-version": ["45", "46", "47", "48", "49"]
+}

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { clearPublishedLevels } from "../lib/liveMeters";
 import { invoke } from "@tauri-apps/api/core";
+import { useStreamerModeStore } from "./streamerMode";
 import type {
   AppStream,
   BusDef,
@@ -36,8 +37,13 @@ function debouncedInvoke(key: string, cmd: string, args: Record<string, unknown>
   };
   const pending: PendingInvoke = {
     timer: window.setTimeout(() => {
-      if (pendingInvokes.get(key) === pending) pendingInvokes.delete(key);
-      void run();
+      // Stay "pending" for the full round trip, not just until the debounce
+      // timer fires: a fastPoll() that lands while the backend call is still
+      // in flight must keep skipping this key too, or it can overwrite the
+      // just-dragged value with the pre-write one it already had in hand.
+      void run().finally(() => {
+        if (pendingInvokes.get(key) === pending) pendingInvokes.delete(key);
+      });
     }, 90),
     run,
   };
@@ -92,6 +98,7 @@ interface StartupPrefs {
   show_balance: boolean;
   multiple_mics: boolean;
   meter_mode: MeterMode;
+  streamer_mode_enabled: boolean;
 }
 
 async function readProfileSnapshot(selectedMicNode: string): Promise<ProfileSnapshot> {
@@ -142,7 +149,7 @@ interface MixerStore {
   eqConfigs: Record<string, EqConfig>;
   fetchEq: () => Promise<void>;
   setChannelEq: (sinkName: string, config: EqConfig) => Promise<void>;
-  /** Mic chain (Phase 3). Null until loaded. */
+  /** Mic chain. Null until loaded. */
   micConfig: MicConfig | null;
   micConfigs: MicConfig[];
   selectedMicNode: string;
@@ -162,7 +169,7 @@ interface MixerStore {
   setMultipleMics: (enabled: boolean) => Promise<void>;
   setMicCreationOpen: (open: boolean) => void;
   profiles: ProfileInfo[];
-  /** Bind/clear an output device that auto-loads a profile (Phase 5). */
+  /** Bind/clear an output device that auto-loads a profile. */
   setProfileTrigger: (name: string, device: string | null) => Promise<void>;
   /** Create a clean-slate profile (saved, not applied). */
   createBlankProfile: (name: string, micEnabled: boolean) => Promise<boolean>;
@@ -247,6 +254,10 @@ interface MixerStore {
   fetchAppStreams: () => Promise<void>;
   setChannelVolume: (sinkName: string, volume: number) => Promise<void>;
   toggleMute: (sinkName: string, muted: boolean) => Promise<void>;
+  /** Independent "Stream" send - entirely separate from `setChannelVolume`/
+   *  `toggleMute` (the "Personal" level). See `VirtualSink.stream_send_*`. */
+  setChannelStreamVolume: (sinkName: string, volume: number) => Promise<void>;
+  toggleChannelStreamMute: (sinkName: string, muted: boolean) => Promise<void>;
   routeApp: (streamIndex: number, sinkName: string) => Promise<void>;
   routeAppGroup: (
     streamIndices: number[],
@@ -263,7 +274,7 @@ interface MixerStore {
 }
 
 /** Structural equality via JSON, to skip no-op store writes on each poll and
- *  avoid re-rendering the whole board when nothing changed (TD-029). */
+ *  avoid re-rendering the whole board when nothing changed. */
 const jsonEqual = (a: unknown, b: unknown): boolean =>
   JSON.stringify(a) === JSON.stringify(b);
 
@@ -407,6 +418,9 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
       }
       const current = get();
       if (prefs.meter_mode === "off") clearPublishedLevels();
+      // Global, not per-profile: hydrate once from the persisted backend
+      // value instead of the store's own local-only default.
+      useStreamerModeStore.getState().hydrate(prefs.streamer_mode_enabled);
       set({
         ...snapshot,
         activeProfile: snapshot.activeProfile
@@ -445,7 +459,27 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     try {
       const channels = await invoke<VirtualSink[]>("get_virtual_devices");
       if (refreshVersion !== profileRefreshVersion) return;
-      set({ channels });
+      // The 500ms poll can win a race against a fader drag: it reads
+      // "get_virtual_devices" before the debounced volume write for this
+      // sink has reached the backend, then that stale snapshot lands here
+      // and briefly overwrites the value the user just dragged to. Keep the
+      // locally-set volume for any sink with a write still in flight instead
+      // of blindly trusting this snapshot for it - both lanes, since Stream
+      // has its own independent debounce key.
+      set((s) => ({
+        channels: channels.map((incoming) => {
+          const local = s.channels.find((c) => c.name === incoming.name);
+          if (!local) return incoming;
+          let next = incoming;
+          if (pendingInvokes.has(`chvol:${incoming.name}`)) {
+            next = { ...next, volume_percent: local.volume_percent };
+          }
+          if (pendingInvokes.has(`chstreamvol:${incoming.name}`)) {
+            next = { ...next, stream_send_volume_percent: local.stream_send_volume_percent };
+          }
+          return next;
+        }),
+      }));
     } catch (e) {
       if (refreshVersion === profileRefreshVersion) set({ error: String(e) });
     }
@@ -490,6 +524,37 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }));
     try {
       await invoke("toggle_channel_mute", { sinkName, muted, expectedProfile: get().activeProfile });
+    } catch (e) {
+      set({ error: String(e) });
+      await get().fetchChannels();
+    }
+  },
+
+  setChannelStreamVolume: async (sinkName, volume) => {
+    set((s) => ({
+      channels: s.channels.map((c) =>
+        c.name === sinkName ? { ...c, stream_send_volume_percent: volume } : c,
+      ),
+    }));
+    debouncedInvoke(
+      `chstreamvol:${sinkName}`,
+      "set_channel_stream_volume",
+      { sinkName, volume, expectedProfile: get().activeProfile },
+      (e) => {
+        set({ error: String(e) });
+        void get().fetchChannels();
+      },
+    );
+  },
+
+  toggleChannelStreamMute: async (sinkName, muted) => {
+    set((s) => ({
+      channels: s.channels.map((c) =>
+        c.name === sinkName ? { ...c, stream_send_muted: muted } : c,
+      ),
+    }));
+    try {
+      await invoke("toggle_channel_stream_mute", { sinkName, muted, expectedProfile: get().activeProfile });
     } catch (e) {
       set({ error: String(e) });
       await get().fetchChannels();

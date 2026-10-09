@@ -1,6 +1,42 @@
 # Changelog
 
-This file summarizes user-visible changes in each Sonux release.
+This file summarizes user-visible changes in each release. Entries describe
+the project under whichever name it carried at the time (Sonux through
+1.2.0; Mixweave from the next release onward).
+
+## [Unreleased]
+
+## [0.5.1] - 08/10/2026
+
+### Languages
+
+- Added bundled Arabic (with right-to-left layout), Russian and Simplified
+  Chinese translations. Mixweave now follows the system language by default and
+  falls back to English for anything untranslated.
+- Custom language packs can still override any bundled translation key by key.
+
+### Mixer
+
+- Removed the "Listen" button from every channel's settings page except the
+  microphone, and from the Master personal lane. Channels already play on their
+  own output, so it only duplicated what you hear.
+- Microphone mute buttons now double as listen buttons: tap to mute or unmute,
+  press and hold to hear the processed mic (the icon becomes headphones). In
+  Streamer Mode the Personal and Stream lanes listen independently.
+
+### Linux
+
+- Fixed GNOME/Wayland global shortcuts not firing when the executable's path
+  contains a space.
+
+### Microphone
+
+- Added AI noise suppression (RNNoise) with a strength control, and acoustic
+  echo cancellation (WebRTC AEC3) for speaker users, both under the
+  microphone's Processing section. Both are off by default and add about 10 ms
+  of delay; they run ahead of the EQ, so the gate, compressor, and both output
+  legs work on the cleaned signal.
+- Slider ranges now stop at 100% unless amplification is allowed per slider.
 
 ## [1.2.0] - 31/08/2026
 
@@ -125,6 +161,6 @@ strengthening the native PipeWire audio path introduced in earlier releases.
   and package formats listed in the README are intended targets, not verified
   compatibility.
 
-[1.2.0]: https://github.com/Haxinpro/Sonux/compare/v1.1.1...v1.2.0
-[1.1.1]: https://github.com/Haxinpro/Sonux/compare/v1.1.0...v1.1.1
-[1.1.0]: https://github.com/Haxinpro/Sonux/compare/v1.0.1...v1.1.0
+[1.2.0]: https://github.com/iishkas/Mixweave/compare/v1.1.1...v1.2.0
+[1.1.1]: https://github.com/iishkas/Mixweave/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/iishkas/Mixweave/compare/v1.0.1...v1.1.0

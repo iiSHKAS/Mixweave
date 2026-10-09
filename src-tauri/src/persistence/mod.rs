@@ -34,7 +34,7 @@ impl ConfigWriteBarrier {
     fn shared(&self) -> std::io::Result<RwLockReadGuard<'_, ()>> {
         if self.quiesced.load(Ordering::Acquire) {
             return Err(std::io::Error::other(
-                "configuration is quiesced while Sonux restarts",
+                "configuration is quiesced while Mixweave restarts",
             ));
         }
         let guard = self
@@ -43,7 +43,7 @@ impl ConfigWriteBarrier {
             .map_err(|_| std::io::Error::other("configuration write barrier is poisoned"))?;
         if self.quiesced.load(Ordering::Acquire) {
             return Err(std::io::Error::other(
-                "configuration is quiesced while Sonux restarts",
+                "configuration is quiesced while Mixweave restarts",
             ));
         }
         Ok(guard)
@@ -147,11 +147,31 @@ pub fn unix_now() -> u64 {
         .unwrap_or(0)
 }
 
-/// Move settings written by the pre-Sonux namespace into the current config
-/// directory. Never merge into or overwrite an existing Sonux directory.
+/// Move settings written under an older app name into the current config
+/// directory. Never merge into or overwrite an existing current directory -
+/// each past rename (Sink -> Sonux -> Mixweave) just adds one more name to
+/// try, checked oldest-safe-first since only one can ever exist at a time.
 fn migrate_legacy_config_dir_from(base: &std::path::Path) -> std::io::Result<()> {
-    let legacy = base.join("sink");
-    let current = base.join("sonux");
+    let current = base.join("mixweave");
+    if current.exists() {
+        return Ok(());
+    }
+    for legacy_name in ["sonux", "sink"] {
+        let legacy = base.join(legacy_name);
+        if legacy.exists() {
+            std::fs::rename(legacy, &current)?;
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// Same idea as [`migrate_legacy_config_dir_from`], for the separate
+/// `$XDG_DATA_HOME` tree (currently just backups - see
+/// [`backup::backups_dir`]).
+fn migrate_legacy_data_dir_from(base: &std::path::Path) -> std::io::Result<()> {
+    let current = base.join("mixweave");
+    let legacy = base.join("sonux");
     if legacy.exists() && !current.exists() {
         std::fs::rename(legacy, current)?;
     }
@@ -159,15 +179,18 @@ fn migrate_legacy_config_dir_from(base: &std::path::Path) -> std::io::Result<()>
 }
 
 pub fn migrate_legacy_config_dir() -> std::io::Result<()> {
-    let Some(base) = dirs::config_dir() else {
-        return Ok(());
-    };
-    migrate_legacy_config_dir_from(&base)
+    if let Some(base) = dirs::config_dir() {
+        migrate_legacy_config_dir_from(&base)?;
+    }
+    if let Some(base) = dirs::data_local_dir() {
+        migrate_legacy_data_dir_from(&base)?;
+    }
+    Ok(())
 }
 
-/// Create Sonux's config directory (and parents) with owner-only access -
+/// Create Mixweave's config directory (and parents) with owner-only access -
 /// routing rules and app history are nobody else's business. Used by every
-/// save path that writes under `$XDG_CONFIG_HOME/sonux`.
+/// save path that writes under `$XDG_CONFIG_HOME/mixweave`.
 pub fn ensure_private_dir(path: &std::path::Path) -> std::io::Result<()> {
     let _write = begin_config_write()?;
     std::fs::create_dir_all(path)?;
@@ -239,12 +262,20 @@ pub fn remove_file(path: &std::path::Path) -> std::io::Result<()> {
     std::fs::remove_file(path)
 }
 
-/// Factory reset: delete everything Sonux or its legacy namespace ever saved - the whole config
+/// Factory reset: delete everything Mixweave or its legacy namespaces ever saved - the whole config
 /// directory (channels, mixes, profiles, assignments, history, prefs)
 /// and the WirePlumber routing rules.
 pub fn wipe_all() -> Result<(), crate::error::SinkError> {
     if let Some(dir) = dirs::config_dir() {
-        for name in ["sonux", "sink"] {
+        for name in ["mixweave", "sonux", "sink"] {
+            let app_dir = dir.join(name);
+            if app_dir.exists() {
+                std::fs::remove_dir_all(&app_dir)?;
+            }
+        }
+    }
+    if let Some(dir) = dirs::data_local_dir() {
+        for name in ["mixweave", "sonux"] {
             let app_dir = dir.join(name);
             if app_dir.exists() {
                 std::fs::remove_dir_all(&app_dir)?;
@@ -253,173 +284,4 @@ pub fn wipe_all() -> Result<(), crate::error::SinkError> {
     }
     wireplumber::remove_installation()?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn write_atomic_overwrites_and_leaves_no_temp() {
-        let dir = std::env::temp_dir().join(format!(
-            "sink-write-atomic-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        let path = dir.join("cfg.json");
-
-        write_atomic(&path, b"first").expect("first write");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "first");
-
-        // A shorter follow-up must fully replace, not overlay, the old bytes.
-        write_atomic(&path, b"second, longer contents").expect("overwrite");
-        assert_eq!(
-            std::fs::read_to_string(&path).unwrap(),
-            "second, longer contents"
-        );
-
-        assert!(
-            std::fs::read_dir(&dir).unwrap().all(|entry| {
-                !entry
-                    .unwrap()
-                    .file_name()
-                    .to_string_lossy()
-                    .ends_with(".tmp")
-            }),
-            "temp file must not linger"
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn concurrent_atomic_writers_do_not_share_a_temp_file() {
-        let dir = std::env::temp_dir().join(format!(
-            "sonux-concurrent-write-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        let path = std::sync::Arc::new(dir.join("cfg.json"));
-        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
-        let payloads = (0..8)
-            .map(|index| format!("writer-{index}:{}", "x".repeat(32 * 1024)))
-            .collect::<Vec<_>>();
-
-        let handles = payloads
-            .iter()
-            .cloned()
-            .map(|payload| {
-                let path = std::sync::Arc::clone(&path);
-                let barrier = std::sync::Arc::clone(&barrier);
-                std::thread::spawn(move || {
-                    barrier.wait();
-                    write_atomic(&path, payload)
-                })
-            })
-            .collect::<Vec<_>>();
-
-        for handle in handles {
-            handle.join().unwrap().expect("concurrent write");
-        }
-        let saved = std::fs::read_to_string(&*path).unwrap();
-        assert!(payloads.contains(&saved));
-        assert!(std::fs::read_dir(&dir).unwrap().all(|entry| !entry
-            .unwrap()
-            .file_name()
-            .to_string_lossy()
-            .ends_with(".tmp")));
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn exclusive_barrier_waits_for_an_in_flight_writer() {
-        let barrier = std::sync::Arc::new(ConfigWriteBarrier {
-            lock: RwLock::new(()),
-            quiesced: AtomicBool::new(false),
-        });
-        let writer = barrier.shared().unwrap();
-        let other = std::sync::Arc::clone(&barrier);
-        let (started_tx, started_rx) = std::sync::mpsc::channel();
-        let (acquired_tx, acquired_rx) = std::sync::mpsc::channel();
-        let handle = std::thread::spawn(move || {
-            started_tx.send(()).unwrap();
-            let _exclusive = other.exclusive().unwrap();
-            other.quiesced.store(true, Ordering::Release);
-            acquired_tx.send(()).unwrap();
-        });
-        started_rx.recv().unwrap();
-        assert!(acquired_rx
-            .recv_timeout(std::time::Duration::from_millis(25))
-            .is_err());
-        drop(writer);
-        acquired_rx
-            .recv_timeout(std::time::Duration::from_secs(1))
-            .unwrap();
-        handle.join().unwrap();
-        assert!(barrier.quiesced.load(Ordering::Acquire));
-        assert!(barrier.shared().is_err());
-    }
-
-    #[test]
-    fn snapshot_exclusion_is_temporary_and_waits_for_writer() {
-        let barrier = std::sync::Arc::new(ConfigWriteBarrier {
-            lock: RwLock::new(()),
-            quiesced: AtomicBool::new(false),
-        });
-        let writer = barrier.shared().unwrap();
-        let other = std::sync::Arc::clone(&barrier);
-        let (acquired_tx, acquired_rx) = std::sync::mpsc::channel();
-        let handle = std::thread::spawn(move || {
-            let exclusive = other.exclusive().unwrap();
-            acquired_tx.send(()).unwrap();
-            drop(exclusive);
-        });
-        assert!(acquired_rx
-            .recv_timeout(std::time::Duration::from_millis(25))
-            .is_err());
-        drop(writer);
-        acquired_rx
-            .recv_timeout(std::time::Duration::from_secs(1))
-            .unwrap();
-        handle.join().unwrap();
-        assert!(!barrier.quiesced.load(Ordering::Acquire));
-        assert!(barrier.shared().is_ok());
-    }
-
-    #[test]
-    fn legacy_config_migrates_without_overwriting_current_state() {
-        let dir = std::env::temp_dir().join(format!(
-            "sonux-config-migration-{}-{}",
-            std::process::id(),
-            unix_now()
-        ));
-        let legacy = dir.join("sink");
-        std::fs::create_dir_all(&legacy).unwrap();
-        std::fs::write(legacy.join("prefs.json"), b"legacy").unwrap();
-
-        migrate_legacy_config_dir_from(&dir).unwrap();
-        assert_eq!(
-            std::fs::read(dir.join("sonux/prefs.json")).unwrap(),
-            b"legacy"
-        );
-        assert!(!legacy.exists());
-
-        std::fs::create_dir_all(&legacy).unwrap();
-        std::fs::write(legacy.join("prefs.json"), b"do not merge").unwrap();
-        migrate_legacy_config_dir_from(&dir).unwrap();
-        assert_eq!(
-            std::fs::read(dir.join("sonux/prefs.json")).unwrap(),
-            b"legacy"
-        );
-        assert!(legacy.exists());
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 }

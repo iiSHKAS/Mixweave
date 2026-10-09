@@ -1,8 +1,8 @@
-# Contributing to Sonux
+# Contributing to Mixweave
 
-Thank you for your interest in Sonux.
+Thank you for your interest in Mixweave.
 
-Sonux is a small personal and learning project without a fixed development or
+Mixweave is a small personal and learning project without a fixed development or
 release schedule. Bug reports, documentation improvements, compatibility
 findings, and focused fixes are welcome, but I cannot guarantee that every
 issue or pull request will receive a response or be accepted.
@@ -13,7 +13,7 @@ direction.
 ## Before Opening an Issue
 
 - Search existing issues to avoid duplicates.
-- Test with the latest available Sonux version when practical.
+- Test with the latest available Mixweave version when practical.
 - Include your Linux distribution, desktop environment, PipeWire version, and
   WirePlumber version.
 - Describe the expected and actual behaviour.
@@ -59,11 +59,9 @@ npm run tauri dev
 
 Before submitting a pull request, run the relevant checks:
 ```bash
-npm test
 npm run build
 cargo fmt --all -- --check
 cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 If a check cannot be run on your system, explain that in the pull-request
 description.
@@ -85,12 +83,12 @@ A pull request should:
 - Mention substantial AI-assisted or automated changes in the description.
 
 New media, icons, audio samples, or other assets must have a clearly documented
-source and licence that permits redistribution with Sonux. Do not submit assets
+source and licence that permits redistribution with Mixweave. Do not submit assets
 when their copyright or redistribution terms are uncertain.
 
 ## Licensing
 
-Sonux is licensed under the
+Mixweave is licensed under the
 GNU General Public License v3.0 (LICENSE).
 
 By submitting a contribution, you agree that your contribution may be

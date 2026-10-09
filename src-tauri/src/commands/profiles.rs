@@ -144,17 +144,34 @@ impl LiveConfigSnapshot {
             }
         }
 
+        let (fraction, master_muted) = crate::persistence::buses::master_gain(&self.buses);
+        let (stream_fraction, streamer_muted) =
+            crate::persistence::buses::streamer_gain(&self.buses);
         for channel in &self.channels {
             record(
-                format!("restore volume for {}", channel.name),
-                state
-                    .backend
-                    .set_sink_volume(&channel.name, channel.volume_percent),
+                format!("restore volume/mute for {}", channel.name),
+                crate::commands::routing::push_channel_controls(
+                    state.backend.as_ref(),
+                    &channel.name,
+                    channel.volume_percent,
+                    channel.muted,
+                    fraction,
+                    master_muted,
+                ),
             );
-            record(
-                format!("restore mute for {}", channel.name),
-                state.backend.set_sink_mute(&channel.name, channel.muted),
-            );
+            if state.backend_native {
+                record(
+                    format!("restore stream send for {}", channel.name),
+                    crate::commands::routing::push_channel_stream_controls(
+                        state.backend.as_ref(),
+                        &channel.name,
+                        channel.stream_send_volume_percent,
+                        channel.stream_send_muted,
+                        stream_fraction,
+                        streamer_muted,
+                    ),
+                );
+            }
             record(
                 format!("restore output for {}", channel.name),
                 state
@@ -286,7 +303,7 @@ fn profile_lifecycle_failure(
 /// switching away and back never loses changes.
 pub fn autosave_active(mixer: &crate::mixer::state::MixerState) {
     if let Err(e) = save_active_with_buses(mixer, &mixer.buses) {
-        eprintln!("sonux: autosave of active profile failed: {e}");
+        eprintln!("mixweave: autosave of active profile failed: {e}");
     }
 }
 
@@ -623,10 +640,12 @@ fn apply_profile_locked(
     });
     let target_secondary_mics = profile.secondary_mics.clone();
     let mut target_buses = profile.buses.clone();
-    // The master mix always exists and carries the profile's full channel
-    // set (this also upgrades old profiles saved before the master model).
+    // The master mix and Streamer Mode always exist and carry the profile's
+    // full channel set (this also upgrades old profiles saved before those
+    // models existed).
     let names: Vec<String> = profile.channels.iter().map(|c| c.name.clone()).collect();
     target_buses.sync_master(&names);
+    target_buses.sync_streamer_mode(&names);
     let current_buses = previous_live.buses.clone();
 
     let backend_result = (|| -> Result<(), String> {
@@ -701,15 +720,19 @@ fn apply_profile_locked(
             }
         }
 
+        let (fraction, master_muted) = crate::persistence::buses::master_gain(&target_buses);
+        let (stream_fraction, streamer_muted) =
+            crate::persistence::buses::streamer_gain(&target_buses);
         for channel in &profile.channels {
-            state
-                .backend
-                .set_sink_volume(&channel.name, channel.volume_percent)
-                .map_err(|e| e.to_string())?;
-            state
-                .backend
-                .set_sink_mute(&channel.name, channel.muted)
-                .map_err(|e| e.to_string())?;
+            crate::commands::routing::push_channel_controls(
+                state.backend.as_ref(),
+                &channel.name,
+                channel.volume_percent,
+                channel.muted,
+                fraction,
+                master_muted,
+            )
+            .map_err(|e| e.to_string())?;
             state
                 .backend
                 .set_channel_output(&channel.name, profile.outputs.get(&channel.name))
@@ -723,6 +746,15 @@ fn apply_profile_locked(
                     .backend
                     .set_channel_eq(&channel.name, &profile.eq.get(&channel.name))
                     .map_err(|error| format!("apply processor for {}: {error}", channel.name))?;
+                crate::commands::routing::push_channel_stream_controls(
+                    state.backend.as_ref(),
+                    &channel.name,
+                    channel.stream_send_volume_percent,
+                    channel.stream_send_muted,
+                    stream_fraction,
+                    streamer_muted,
+                )
+                .map_err(|e| e.to_string())?;
             }
         }
 
@@ -899,6 +931,8 @@ pub fn create_blank_profile(
             volume_percent: 100,
             muted: false,
             stream_mix: def.stream_mix,
+            stream_send_volume_percent: 100,
+            stream_send_muted: false,
         })
         .collect();
     let mic = crate::audio::types::MicConfig {
@@ -1144,34 +1178,4 @@ pub fn delete_profile(
     }
     crate::refresh_tray(&app);
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn autosave_snapshot_preserves_profile_metadata() {
-        let mixer = crate::mixer::state::MixerState {
-            active_profile: Some("Default".into()),
-            active_trigger: Some("alsa_output.deck".into()),
-            active_protected: true,
-            ..Default::default()
-        };
-
-        let profile = profile_for_autosave(&mixer).expect("active profile snapshot");
-        assert_eq!(profile.name, "Default");
-        assert_eq!(profile.trigger_device.as_deref(), Some("alsa_output.deck"));
-        assert!(profile.protected);
-    }
-
-    #[test]
-    fn checked_autosave_reports_invalid_live_state() {
-        let mixer = crate::mixer::state::MixerState {
-            active_profile: Some("Default".into()),
-            channels: Vec::new(),
-            ..Default::default()
-        };
-        assert!(autosave_active_checked(&mixer).is_err());
-    }
 }

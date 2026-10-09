@@ -3,7 +3,7 @@ import { useMixerStore } from "../../store/mixer";
 import type { EqConfig, VirtualSink } from "../../types";
 import { defaultEqConfig } from "../../types";
 import { DspSlider } from "../Mic/DspSlider";
-import { Toggle, ToggleRow } from "../Toggle";
+import { ProcessingHead } from "../ProcessingHead";
 import { Ms } from "../Icons";
 import { ProcessingInfo } from "../ProcessingInfo";
 import { useI18n, type TranslationKey } from "../../i18n";
@@ -46,162 +46,148 @@ export function ChannelProcessing({ channel }: Readonly<{ channel: VirtualSink }
   const apply = (patch: Partial<EqConfig>) =>
     void setChannelEq(channel.name, { ...config, ...patch });
 
+  const modeSwitch = (
+    <div className="channel-mode-switch" role="group" aria-label={t("processing.outputMode")}>
+      <ModeButton
+        mode="headphones"
+        current={config.playback_mode}
+        icon="headphones"
+        title={t("processing.headphones")}
+        onSelect={(playback_mode) => apply({ playback_mode })}
+      />
+      <ModeButton
+        mode="speakers"
+        current={config.playback_mode}
+        icon="speaker"
+        title={t("processing.speakers")}
+        onSelect={(playback_mode) => apply({ playback_mode })}
+      />
+    </div>
+  );
+  const tuningLocked = !config.spatial_enabled;
+  const tuning = Math.round(config.spatial_tuning * 100);
+  const tuningWord = tuning <= 35
+    ? t("processing.spatial.precision")
+    : tuning >= 65 ? t("processing.spatial.immersion") : t("processing.spatial.balanced");
+
   return (
-    <div className={"channel-processing-grid" + (supportsSpatial ? " has-spatial" : "")}>
+    <div className={"channel-processing-grid" + (supportsSpatial ? " has-spatial" : "") + (isVoice ? " voice-grid" : "")}>
       {supportsSpatial ? (
         <div className="card channel-processing-card spatial-processing-card">
-          <div className="spatial-head">
-            <div className="processing-toggle-title">
-              <Toggle
-                on={config.spatial_enabled}
-                onClick={() => apply({ spatial_enabled: !config.spatial_enabled })}
-              />
-              <div className="rtitle">{t("processing.spatial.title")}</div>
-            </div>
-            <div className="processing-card-head-actions">
-              <div className="channel-mode-switch" role="group" aria-label={t("processing.outputMode")}>
-                <ModeButton
-                  mode="headphones"
-                  current={config.playback_mode}
-                  icon="headphones"
-                  title={t("processing.headphones")}
-                  onSelect={(playback_mode) => apply({ playback_mode })}
-                />
-                <ModeButton
-                  mode="speakers"
-                  current={config.playback_mode}
-                  icon="speaker"
-                  title={t("processing.speakers")}
-                  onSelect={(playback_mode) => apply({ playback_mode })}
-                />
-              </div>
-              <ProcessingInfo
-                label={t("processing.spatial.title")}
-                text={t("processing.spatial.info")}
-              />
-            </div>
-          </div>
+          <ProcessingHead
+            icon="surround_sound"
+            tone="accent"
+            title={t("processing.spatial.title")}
+            subtitle={t("processing.spatial.subtitle")}
+            actions={modeSwitch}
+            on={config.spatial_enabled}
+            onToggle={() => apply({ spatial_enabled: !config.spatial_enabled })}
+          />
 
-          <div
-            className={
-              "spatial-body" +
-              (!config.spatial_enabled ? " inactive" : "")
-            }
-          >
-            <div className="spatial-stage" aria-label={t("processing.spatial.stageLabel")}>
-              <div className="spatial-listener">
-                <Ms name={config.playback_mode === "headphones" ? "headphones" : "speaker"} />
+          <div className={"spatial-body" + (!config.spatial_enabled ? " inactive" : "")}>
+            <div className="spatial-panel">
+              <div className="spatial-front">{t("processing.spatial.front")}</div>
+              <div className="spatial-stage" aria-label={t("processing.spatial.stageLabel")}>
+                <div className="spatial-listener">
+                  <Ms name={config.playback_mode === "headphones" ? "headphones" : "speaker"} />
+                  <span>{t("processing.spatial.you")}</span>
+                </div>
+                {[
+                  ["FL", "processing.spatial.frontLeft", "fl"],
+                  ["FC", "processing.spatial.frontCentre", "fc"],
+                  ["FR", "processing.spatial.frontRight", "fr"],
+                  ["SL", "processing.spatial.sideLeft", "sl"],
+                  ["SR", "processing.spatial.sideRight", "sr"],
+                  ["RL", "processing.spatial.rearLeft", "rl"],
+                  ["LFE", "processing.spatial.subwoofer", "lfe"],
+                  ["RR", "processing.spatial.rearRight", "rr"],
+                ].map(([id, title, position]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`spatial-speaker ${position}`}
+                    title={t("processing.spatial.test", { speaker: t(title as TranslationKey) })}
+                    aria-label={t("processing.spatial.test", { speaker: t(title as TranslationKey) })}
+                    disabled={!config.spatial_enabled}
+                    onClick={() => void invoke("test_spatial_channel", { sinkName: channel.name, channel: id })}
+                  >
+                    <Ms name={id === "LFE" ? "speaker" : "volume_up"} />
+                    <span>{id}</span>
+                  </button>
+                ))}
               </div>
-              {[
-                ["FL", "processing.spatial.frontLeft", "fl"],
-                ["FC", "processing.spatial.frontCentre", "fc"],
-                ["FR", "processing.spatial.frontRight", "fr"],
-                ["SL", "processing.spatial.sideLeft", "sl"],
-                ["SR", "processing.spatial.sideRight", "sr"],
-                ["RL", "processing.spatial.rearLeft", "rl"],
-                ["LFE", "processing.spatial.subwoofer", "lfe"],
-                ["RR", "processing.spatial.rearRight", "rr"],
-              ].map(([id, title, position]) => (
+              <div className="spatial-hint"><i aria-hidden="true" />{t("processing.spatial.hint")}</div>
+            </div>
+
+            <div className={"spatial-side" + (tuningLocked ? " locked" : "")}>
+              <div className="spatial-side-head">
+                <div className="spatial-side-title">{t("processing.spatial.tuningHeading")}</div>
                 <button
-                  key={id}
                   type="button"
-                  className={`spatial-speaker ${position}`}
-                  title={t("processing.spatial.test", { speaker: t(title as TranslationKey) })}
-                  aria-label={t("processing.spatial.test", { speaker: t(title as TranslationKey) })}
-                  disabled={!config.spatial_enabled}
-                  onClick={() => void invoke("test_spatial_channel", { sinkName: channel.name, channel: id })}
+                  className="text-action"
+                  disabled={tuningLocked}
+                  onClick={() => apply({ spatial_tuning: 0.5, spatial_distance: 0.5 })}
                 >
-                  <Ms name={id === "LFE" ? "surround_sound" : "volume_up"} />
-                  <span>{id}</span>
+                  <Ms name="restart_alt" />
+                  {t("common.action.reset")}
                 </button>
-              ))}
-            </div>
-
-            <div className="spatial-tuning">
-              <div className="rtitle spatial-tuning-title">{t("processing.spatial.tuning")}</div>
+              </div>
               <DspSlider
+                stacked
                 label={t("processing.spatial.performance")}
+                startLabel={t("processing.spatial.precision")}
                 endLabel={t("processing.spatial.immersion")}
+                pillText={tuningWord}
                 min={0}
                 max={100}
                 step={1}
-                value={Math.round(config.spatial_tuning * 100)}
+                value={tuning}
                 defaultValue={50}
                 unit=""
-                inlineEndLabel
-                disabled={!config.spatial_enabled || config.playback_mode !== "headphones"}
+                disabled={tuningLocked}
                 onChange={(value) => apply({ spatial_tuning: value / 100 })}
               />
               <DspSlider
+                stacked
                 label={t("processing.spatial.distance")}
+                startLabel={t("processing.spatial.near")}
+                endLabel={t("processing.spatial.far")}
                 min={0}
                 max={100}
                 step={1}
                 value={Math.round(config.spatial_distance * 100)}
                 defaultValue={50}
                 unit=""
-                disabled={!config.spatial_enabled || config.playback_mode !== "headphones"}
+                disabled={tuningLocked}
                 onChange={(value) => apply({ spatial_distance: value / 100 })}
               />
+              <div className="spatial-note">
+                <ProcessingInfo label={t("processing.spatial.title")} text={t("processing.spatial.info")} />
+                <span>{t(config.playback_mode === "headphones" ? "processing.spatial.noteHeadphones" : "processing.spatial.noteSpeakers")}</span>
+              </div>
             </div>
           </div>
         </div>
       ) : (
-      <div className="card channel-processing-card channel-output-card">
-        <div className="processing-card-head">
-          <div className="rtitle">{t("processing.outputMode")}</div>
-          <div className="processing-card-head-actions">
-            <div className="channel-mode-switch" role="group" aria-label={t("processing.outputMode")}>
-              <ModeButton
-                mode="headphones"
-                current={config.playback_mode}
-                icon="headphones"
-                title={t("processing.headphones")}
-                onSelect={(playback_mode) => apply({ playback_mode })}
-              />
-              <ModeButton
-                mode="speakers"
-                current={config.playback_mode}
-                icon="speaker"
-                title={t("processing.speakers")}
-                onSelect={(playback_mode) => apply({ playback_mode })}
-              />
-            </div>
-            <ProcessingInfo
-              label={t("processing.outputMode")}
-              text={t("processing.outputInfo")}
-            />
-          </div>
+        <div className="card channel-processing-card channel-output-card">
+          <ProcessingHead
+            icon="headphones"
+            title={t("processing.outputMode")}
+            subtitle={t("processing.outputMode.subtitle")}
+            info={<ProcessingInfo label={t("processing.outputMode")} text={t("processing.outputInfo")} />}
+            actions={modeSwitch}
+          />
         </div>
-      </div>
       )}
 
-      <div className="card channel-processing-card">
-        <div className="processing-card-head">
-          {isVoice ? (
-            <div className="rtitle">{t("processing.voice.title")}</div>
-          ) : (
-            <div className="processing-toggle-title">
-              <Toggle
-                on={config.comp_enabled}
-                onClick={() => apply({ comp_enabled: !config.comp_enabled })}
-              />
-              <div className="rtitle">{t("processing.smartVolume.title")}</div>
-            </div>
-          )}
-          <div className="processing-card-head-actions">
-            <ProcessingInfo
-              label={t(isVoice ? "processing.voice.title" : "processing.smartVolume.infoLabel")}
-              text={t(isVoice ? "processing.voice.info" : "processing.smartVolume.info")}
-            />
-          </div>
-        </div>
-
-        {isVoice && (
-          <>
-            <ToggleRow
+      {isVoice ? (
+        <>
+          <div className="card channel-processing-card">
+            <ProcessingHead
               icon="noise_control_off"
               title={t("processing.noiseGate")}
+              subtitle={t("processing.noiseGate.subtitle")}
+              info={<ProcessingInfo label={t("processing.noiseGate")} text={t("processing.noiseGate.info")} />}
               on={config.gate_enabled}
               onToggle={() => apply({ gate_enabled: !config.gate_enabled })}
             />
@@ -216,19 +202,17 @@ export function ChannelProcessing({ channel }: Readonly<{ channel: VirtualSink }
               disabled={!config.gate_enabled}
               onChange={(gate_threshold_db) => apply({ gate_threshold_db })}
             />
-          </>
-        )}
+          </div>
 
-        {isVoice && (
-          <ToggleRow
-            icon="compress"
-            title={t("processing.compressor")}
-            on={config.comp_enabled}
-            onToggle={() => apply({ comp_enabled: !config.comp_enabled })}
-          />
-        )}
-        {isVoice ? (
-          <>
+          <div className="card channel-processing-card">
+            <ProcessingHead
+              icon="compress"
+              title={t("processing.compressor")}
+              subtitle={t("processing.compressor.subtitle")}
+              info={<ProcessingInfo label={t("processing.compressor")} text={t("processing.compressor.info")} />}
+              on={config.comp_enabled}
+              onToggle={() => apply({ comp_enabled: !config.comp_enabled })}
+            />
             <DspSlider
               label={t("processing.threshold")}
               min={-60}
@@ -251,8 +235,28 @@ export function ChannelProcessing({ channel }: Readonly<{ channel: VirtualSink }
               disabled={!config.comp_enabled}
               onChange={(comp_ratio) => apply({ comp_ratio })}
             />
-          </>
-        ) : (
+            <DspSlider
+              label={t("processing.volumeBoost")}
+              min={-12}
+              max={12}
+              step={0.5}
+              unit=" dB"
+              value={config.boost_db}
+              defaultValue={0}
+              onChange={(boost_db) => apply({ boost_db })}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="card channel-processing-card">
+          <ProcessingHead
+            icon="volume_up"
+            title={t("processing.smartVolume.title")}
+            subtitle={t("processing.smartVolume.subtitle")}
+            info={<ProcessingInfo label={t("processing.smartVolume.infoLabel")} text={t("processing.smartVolume.info")} />}
+            on={config.comp_enabled}
+            onToggle={() => apply({ comp_enabled: !config.comp_enabled })}
+          />
           <DspSlider
             label={t("processing.level")}
             min={1}
@@ -264,36 +268,28 @@ export function ChannelProcessing({ channel }: Readonly<{ channel: VirtualSink }
             disabled={!config.comp_enabled}
             onChange={(comp_ratio) => apply({ comp_ratio })}
           />
-        )}
-
-        <DspSlider
-          label={t("processing.volumeBoost")}
-          min={-12}
-          max={12}
-          step={0.5}
-          unit=" dB"
-          value={config.boost_db}
-          defaultValue={0}
-          onChange={(boost_db) => apply({ boost_db })}
-        />
-      </div>
+          <DspSlider
+            label={t("processing.volumeBoost")}
+            min={-12}
+            max={12}
+            step={0.5}
+            unit=" dB"
+            value={config.boost_db}
+            defaultValue={0}
+            onChange={(boost_db) => apply({ boost_db })}
+          />
+        </div>
+      )}
 
       <div className="card channel-processing-card channel-limiter-card">
-        <div className="processing-card-head">
-          <div className="processing-toggle-title">
-            <Toggle
-              on={config.limiter_enabled}
-              onClick={() => apply({ limiter_enabled: !config.limiter_enabled })}
-            />
-            <div className="rtitle">{t("processing.limiter")}</div>
-          </div>
-          <div className="processing-card-head-actions">
-            <ProcessingInfo
-              label={t("processing.limiter")}
-              text={t("processing.limiter.info")}
-            />
-          </div>
-        </div>
+        <ProcessingHead
+          icon="vertical_align_top"
+          title={t("processing.limiter")}
+          subtitle={t("processing.limiter.subtitle")}
+          info={<ProcessingInfo label={t("processing.limiter")} text={t("processing.limiter.info")} />}
+          on={config.limiter_enabled}
+          onToggle={() => apply({ limiter_enabled: !config.limiter_enabled })}
+        />
         <DspSlider
           label={t("processing.ceiling")}
           min={-12}
@@ -305,6 +301,7 @@ export function ChannelProcessing({ channel }: Readonly<{ channel: VirtualSink }
           disabled={!config.limiter_enabled}
           onChange={(limiter_ceiling_db) => apply({ limiter_ceiling_db })}
         />
+        <div className="processing-note">{t("processing.limiter.note")}</div>
       </div>
     </div>
   );

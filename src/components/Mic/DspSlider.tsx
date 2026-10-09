@@ -16,6 +16,12 @@ interface DspSliderProps {
   unit: string;
   /** Place the end label in the value column instead of above the track. */
   inlineEndLabel?: boolean;
+  /** Title and value pill on one line, the track below it, and end captions
+   * (`startLabel` / `endLabel`) under the track. */
+  stacked?: boolean;
+  startLabel?: string;
+  /** Text shown in the value pill of a stacked slider (defaults to the value). */
+  pillText?: string;
   disabled?: boolean;
   onChange: (value: number) => void;
 }
@@ -31,6 +37,9 @@ export function DspSlider({
   defaultValue,
   unit,
   inlineEndLabel = false,
+  stacked = false,
+  startLabel,
+  pillText,
   disabled = false,
   onChange,
 }: Readonly<DspSliderProps>) {
@@ -94,6 +103,41 @@ export function DspSlider({
       if (!disabled) handleSliderKey(event, { min, max, step, value, onChange });
     },
   } as const;
+
+  if (stacked) {
+    return (
+      <div className={"dsp-stacked" + (disabled ? " disabled" : "")}>
+        <div className="dsp-stacked-head">
+          <span className="dsp-stacked-label">{label}</span>
+          <span className="dsp-stacked-pill">{pillText ?? `${value}${unit}`}</span>
+        </div>
+        <div
+          className="hs-track"
+          ref={trackRef}
+          {...sliderProps}
+          title={t("common.defaultResetHint", { value: `${defaultValue}${unit}` })}
+          onPointerDown={(e) => {
+            if (disabled) return;
+            dragging.current = true;
+            setFromEvent(e.clientX);
+          }}
+          onDoubleClick={() => {
+            if (!disabled) onChange(defaultValue);
+          }}
+        >
+          <div className="dsp-default-tick" style={{ left: defaultPct + "%" }} />
+          <div className="hs-fill" style={{ width: pct + "%" }} />
+          <div className="hs-cap" style={{ left: pct + "%" }} />
+        </div>
+        {(startLabel || endLabel) && (
+          <div className="dsp-stacked-ends" aria-hidden="true">
+            <span>{startLabel}</span>
+            <span>{endLabel}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={"dsp-row" + (disabled ? " disabled" : "") + (hasEndLabels ? " end-labels" : "")}>

@@ -12,9 +12,12 @@ import {
   type TextDirection,
   type TranslationKey,
 } from "./i18nCore";
+import "./bundledLanguages";
 
 interface I18nContextValue {
   locale: string;
+  /** The language "System default" resolves to, independent of the chosen preference. */
+  systemLocale: string;
   direction: TextDirection;
   preference: LocalePreference;
   availableLocales: AvailableLocale[];
@@ -31,6 +34,7 @@ interface I18nProviderProps {
 
 const ENGLISH_CONTEXT: I18nContextValue = {
   locale: "en",
+  systemLocale: "en",
   direction: "ltr",
   preference: { mode: "locale", locale: "en" },
   availableLocales: listAvailableLocales(),
@@ -47,7 +51,8 @@ function browserLocales(): readonly string[] {
 
 export function I18nProvider({ children, preference, onPreferenceChange, systemLocales }: I18nProviderProps) {
   const registryRevision = useSyncExternalStore(subscribeLanguagePacks, getLanguagePackRevision, getLanguagePackRevision);
-  const locale = resolveLocale(preference, systemLocales ?? browserLocales());
+  const systemLocale = resolveLocale({ mode: "system" }, systemLocales ?? browserLocales());
+  const locale = preference.mode === "system" ? systemLocale : resolveLocale(preference);
   const direction = directionForLocale(locale);
 
   useLayoutEffect(() => {
@@ -57,12 +62,13 @@ export function I18nProvider({ children, preference, onPreferenceChange, systemL
 
   const value = useMemo<I18nContextValue>(() => ({
     locale,
+    systemLocale,
     direction,
     preference,
     availableLocales: listAvailableLocales(),
     setPreference: onPreferenceChange,
     t: (key, variables) => translate(locale, key, variables),
-  }), [direction, locale, onPreferenceChange, preference, registryRevision]);
+  }), [direction, locale, onPreferenceChange, preference, registryRevision, systemLocale]);
 
   return createElement(I18nContext.Provider, { value }, children);
 }

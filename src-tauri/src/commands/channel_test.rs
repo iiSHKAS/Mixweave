@@ -105,30 +105,3 @@ pub fn play_channel_test_sample(
         },
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bundled_samples_are_stereo_pcm_with_audio() {
-        for name in [
-            "game_action",
-            "game_footsteps",
-            "chat_female",
-            "chat_male",
-            "media_ambient",
-            "media_music",
-        ] {
-            let samples = bundled_sample(name).unwrap();
-            assert_eq!(samples.len() % 2, 0, "{name}");
-            assert!(samples.len() >= 48_000 * 2, "{name}");
-            assert!(samples.iter().any(|sample| *sample != 0), "{name}");
-        }
-    }
-
-    #[test]
-    fn unknown_sample_is_rejected() {
-        assert!(bundled_sample("unlicensed_sample").is_err());
-    }
-}

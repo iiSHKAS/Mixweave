@@ -41,6 +41,9 @@ export function Tooltip() {
       anchor.current = null;
     };
     const hide = () => {
+      // Scroll events arrive in bursts; with nothing shown or pending there is
+      // nothing to undo, so skip the DOM and state work entirely.
+      if (!primary && !visible && suppressed.size === 0) return;
       window.clearTimeout(timer.current);
       primary = null;
       visible = false;

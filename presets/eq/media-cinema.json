@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "name": "Media Cinema",
+  "author": "MixWeave",
+  "description": "Headphone movie listening: restrained bass weight, natural dialogue presence and softened edge. Preserves soundtrack dynamics with gentle crossfeed and peak protection.",
+  "enabled": true,
+  "preamp_db": -3.5,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 100,
+      "gain_db": 2.5,
+      "q": 0.71
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 300,
+      "gain_db": -1,
+      "q": 0.9
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 2000,
+      "gain_db": 1.5,
+      "q": 0.8
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 5500,
+      "gain_db": -1,
+      "q": 1.2
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 10000,
+      "gain_db": 0,
+      "q": 0.71
+    }
+  ],
+  "tone_bass_db": 0,
+  "tone_voice_db": 0,
+  "tone_treble_db": 0,
+  "boost_db": 0,
+  "gate_enabled": false,
+  "comp_enabled": false,
+  "limiter_enabled": true,
+  "limiter_ceiling_db": -1,
+  "playback_mode": "headphones",
+  "spatial_enabled": false,
+  "spatial_tuning": 0.5,
+  "spatial_distance": 0.5,
+  "comp_threshold_db": -18,
+  "comp_ratio": 3
+}

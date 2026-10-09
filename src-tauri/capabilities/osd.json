@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "osd",
+  "description": "Capabilities for the click-through, always-on-top shortcut OSD window (X11 only)",
+  "windows": ["osd"],
+  "permissions": [
+    "core:event:default"
+  ]
+}

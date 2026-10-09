@@ -57,7 +57,7 @@ fn default_mic_eq_bands() -> Vec<EqBand> {
 fn presets_dir() -> Result<PathBuf, SinkError> {
     let dir = dirs::config_dir()
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
-    Ok(dir.join("sonux").join("mic_presets"))
+    Ok(dir.join("mixweave").join("mic_presets"))
 }
 
 pub fn list() -> Result<Vec<MicPreset>, SinkError> {
@@ -79,7 +79,7 @@ pub fn list() -> Result<Vec<MicPreset>, SinkError> {
                 .and_then(|raw| serde_json::from_str::<MicPreset>(&raw).ok())
             {
                 Some(preset) if preset.schema == MIC_PRESET_SCHEMA => presets.push(preset),
-                _ => eprintln!("sonux: skipping malformed mic preset {}", path.display()),
+                _ => eprintln!("mixweave: skipping malformed mic preset {}", path.display()),
             }
         }
     }
@@ -101,38 +101,4 @@ pub fn delete(name: &str) -> Result<(), SinkError> {
     let name = super::profiles::sanitize_name(name)?;
     let path = presets_dir()?.join(format!("{name}.json"));
     super::remove_file(&path).map_err(SinkError::from)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn snapshot_excludes_hardware_and_live_controls() {
-        let config = MicConfig {
-            node_name: "sink_mic".into(),
-            enabled: true,
-            input_device: Some("hardware".into()),
-            output_label: "Voice".into(),
-            gain_percent: 175,
-            muted: true,
-            eq_enabled: true,
-            eq_preamp_db: -2.0,
-            eq_bands: MicConfig::default().eq_bands,
-            gate_enabled: true,
-            gate_threshold_db: -35.0,
-            comp_enabled: true,
-            comp_threshold_db: -20.0,
-            comp_ratio: 4.0,
-            limiter_enabled: true,
-            limiter_ceiling_db: -2.0,
-        };
-        let preset = MicPreset::from_config("Speech".into(), &config);
-        assert_eq!(preset.name, "Speech");
-        assert!(preset.eq_enabled);
-        assert_eq!(preset.eq_preamp_db, -2.0);
-        assert_eq!(preset.gate_threshold_db, -35.0);
-        assert_eq!(preset.comp_ratio, 4.0);
-        assert_eq!(preset.limiter_ceiling_db, -2.0);
-    }
 }

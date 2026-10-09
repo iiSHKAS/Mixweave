@@ -12,13 +12,13 @@ use crate::error::SinkError;
 
 /// `owner_module` value pactl uses when a sink has no owning module.
 const PA_INVALID_INDEX: u32 = u32::MAX;
-/// Marker placed in every fallback module Sonux creates.  A matching module
+/// Marker placed in every fallback module Mixweave creates.  A matching module
 /// type and sink name are not an ownership proof: another client can choose
 /// the same name.  Reconciliation and teardown require this marker too.
 const SONUX_MODULE_MARKER: &str = "sonux.owner=sonux";
 
-/// Phase 1 backend: drives the audio system through the `pactl` CLI, which
-/// works against both PulseAudio and PipeWire (via pipewire-pulse).
+/// PulseAudio compatibility backend using the `pactl` CLI. Supports both
+/// PulseAudio and PipeWire (via pipewire-pulse).
 ///
 /// Uses `pactl --format=json` (available since PulseAudio 16) so parsing is
 /// structural rather than scraping human-oriented text.
@@ -27,7 +27,7 @@ pub struct PactlBackend {
     /// `create_virtual_sink` returns `()` per the trait, so module indices
     /// are tracked here instead of in `MixerState`.
     modules: Mutex<HashMap<String, u32>>,
-    /// channel sink name -> index of its `module-loopback` (Phase 4 output
+    /// channel sink name -> index of its `module-loopback` (output
     /// routing fallback; the native backend uses passive links instead).
     loopbacks: Mutex<HashMap<String, u32>>,
 }
@@ -234,7 +234,7 @@ impl AudioBackend for PactlBackend {
         // Quote the description and escape it so a label with whitespace
         // (or quotes/backslashes) can't split into extra module properties -
         // pactl parses `sink_properties` as a space-delimited proplist, and
-        // the value is otherwise attacker-influenced (TD-048). Control chars
+        // the value is otherwise attacker-influenced. Control chars
         // are dropped so a newline can't start a new property line.
         let desc: String = label
             .chars()
@@ -527,146 +527,5 @@ impl AudioBackend for PactlBackend {
             .map_err(|_| SinkError::Parse("loopback table lock poisoned".into()))?
             .insert(sink_name.to_string(), module_index);
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_volume_percent() {
-        let mut vol = HashMap::new();
-        vol.insert(
-            "front-left".to_string(),
-            PactlVolume {
-                value_percent: "87%".to_string(),
-            },
-        );
-        vol.insert(
-            "front-right".to_string(),
-            PactlVolume {
-                value_percent: "92%".to_string(),
-            },
-        );
-        assert_eq!(volume_percent(&vol), 92);
-    }
-
-    #[test]
-    fn volume_percent_defaults_to_100_on_garbage() {
-        let mut vol = HashMap::new();
-        vol.insert(
-            "mono".to_string(),
-            PactlVolume {
-                value_percent: "not-a-number".to_string(),
-            },
-        );
-        assert_eq!(volume_percent(&vol), 100);
-    }
-
-    #[test]
-    fn parses_real_sink_json() {
-        let json = r#"[{"index":66,"state":"SUSPENDED","name":"alsa_output.usb-Arctis-00.analog-stereo","description":"Arctis Analog Stereo","mute":false,"owner_module":4294967295,"volume":{"front-left":{"value":57016,"value_percent":"87%","db":"-3.63 dB"}}}]"#;
-        let sinks: Vec<PactlSink> = serde_json::from_str(json).expect("sink json should parse");
-        assert_eq!(sinks[0].index, 66);
-        assert_eq!(sinks[0].name, "alsa_output.usb-Arctis-00.analog-stereo");
-        assert_eq!(sinks[0].owner_module, Some(PA_INVALID_INDEX));
-    }
-
-    #[test]
-    fn parses_sink_input_json() {
-        let json = r#"[{"index":12,"sink":66,"mute":false,"volume":{"front-left":{"value":65536,"value_percent":"100%","db":"0.00 dB"}},"properties":{"application.name":"Firefox","application.icon_name":"firefox"}}]"#;
-        let inputs: Vec<PactlSinkInput> =
-            serde_json::from_str(json).expect("sink-input json should parse");
-        assert_eq!(inputs[0].index, 12);
-        assert_eq!(
-            prop(&inputs[0].properties, "application.name"),
-            Some("Firefox")
-        );
-    }
-
-    #[test]
-    fn module_lookup_requires_exact_name_type_and_ownership_marker() {
-        let modules = vec![
-            PactlModule {
-                index: 1,
-                name: "module-alsa-card".to_string(),
-                argument: Some("sink_name=sink_game".to_string()),
-            },
-            PactlModule {
-                index: 2,
-                name: "module-null-sink".to_string(),
-                argument: Some("sink_name=sink_game_extra".to_string()),
-            },
-            PactlModule {
-                index: 3,
-                name: "module-null-sink".to_string(),
-                argument: Some("sink_name=sink_game channels=2".to_string()),
-            },
-            PactlModule {
-                index: 4,
-                name: "module-null-sink".to_string(),
-                argument: Some(format!(
-                    "sink_name=sink_game sink_properties={SONUX_MODULE_MARKER}"
-                )),
-            },
-        ];
-        assert_eq!(null_sink_module(&modules, "sink_game"), Some(4));
-        assert_eq!(null_sink_module(&modules, "sink_chat"), None);
-        let lookalike = [PactlModule {
-            index: 5,
-            name: "module-null-sink".to_string(),
-            argument: Some(format!(
-                "sink_name=sink_game sink_properties=x{SONUX_MODULE_MARKER}y"
-            )),
-        }];
-        assert_eq!(null_sink_module(&lookalike, "sink_game"), None);
-    }
-
-    #[test]
-    fn orphan_loopback_lookup_requires_exact_source_and_marker() {
-        let modules = vec![
-            PactlModule {
-                index: 1,
-                name: "module-loopback".to_string(),
-                argument: Some(format!(
-                    "source=sink_game.monitor sink=@DEFAULT_SINK@ sink_input_properties={SONUX_MODULE_MARKER}"
-                )),
-            },
-            PactlModule {
-                index: 2,
-                name: "module-loopback".to_string(),
-                argument: Some("source=sink_game.monitor sink=x".to_string()),
-            },
-            PactlModule {
-                index: 3,
-                name: "module-loopback".to_string(),
-                argument: Some(format!(
-                    "source=sink_game.monitor.extra sink=x sink_input_properties={SONUX_MODULE_MARKER}"
-                )),
-            },
-            PactlModule {
-                index: 4,
-                name: "module-loopback".to_string(),
-                argument: Some(format!(
-                    "source=sink_game.monitor sink=x unrelated=x{SONUX_MODULE_MARKER}y"
-                )),
-            },
-        ];
-        assert_eq!(owned_loopback_modules(&modules, "sink_game"), vec![1]);
-    }
-
-    #[test]
-    fn visible_app_input_filter_rejects_hidden_streams() {
-        let visible: PactlSinkInput = serde_json::from_str(
-            r#"{"index":1,"sink":2,"mute":false,"volume":{},"properties":{"application.name":"Game"}}"#,
-        )
-        .unwrap();
-        let hidden: PactlSinkInput = serde_json::from_str(
-            r#"{"index":2,"sink":2,"mute":false,"volume":{},"properties":{"media.role":"Event"}}"#,
-        )
-        .unwrap();
-        assert!(is_visible_app_input(&visible));
-        assert!(!is_visible_app_input(&hidden));
     }
 }

@@ -24,7 +24,26 @@ in `src/styles/fonts/LICENSE.txt`.
 ## Material Symbols
 
 The bundled Material Symbols icon font is distributed under Apache-2.0. The
-Apache 2.0 text is in `third_party/licenses/APACHE-2.0.txt`.
+Apache 2.0 text is in `third_party/licenses/APACHE-2.0.txt`. Only the ~100
+glyphs the interface actually uses are bundled (a subset of the upstream
+`material-symbols` package, rebuilt by `scripts/subset-material-symbols.py`)
+rather than the full ~4000-icon font.
+
+## RNNoise (microphone noise suppression)
+
+Noise suppression uses the `nnnoiseless` crate, a pure-Rust port of Xiph's
+RNNoise (Copyright (c) 2020 Joe Neeman; 2017 Mozilla; 2007-2017 Jean-Marc
+Valin; 2005-2017 Xiph.Org Foundation; 2003-2004 Mark Borgerding), licensed under
+the BSD 3-Clause license. The license text is packaged as
+`licenses/RNNOISE_BSD-3-Clause.txt`.
+
+## WebRTC audio processing (microphone echo cancellation)
+
+Echo cancellation uses the `sonora` crates, a pure-Rust port of WebRTC's audio
+processing (Copyright (c) 2011 The WebRTC Project Authors; 2016 Arun Raghavan
+and contributors; 2026 dignifiedquire), licensed under the BSD 3-Clause
+license. The license text is packaged as
+`licenses/WEBRTC_SONORA_BSD-3-Clause.txt`.
 
 ## pipewire-rs system bindings
 

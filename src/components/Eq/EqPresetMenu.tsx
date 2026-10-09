@@ -38,11 +38,12 @@ interface PresetSelection {
   name: string;
 }
 
-const ACTIVE_PRESET_KEY = "sonux-active-eq-presets";
-const LEGACY_ACTIVE_PRESET_KEY = "sink-active-eq-presets";
+const ACTIVE_PRESET_KEY = "mixweave-active-eq-presets";
+const LEGACY_ACTIVE_PRESET_KEY = "sonux-active-eq-presets";
+const SINK_ACTIVE_PRESET_KEY = "sink-active-eq-presets";
 
 function readPresetMap(): Record<string, PresetSelection> {
-  const raw = localStorage.getItem(ACTIVE_PRESET_KEY) ?? localStorage.getItem(LEGACY_ACTIVE_PRESET_KEY);
+  const raw = localStorage.getItem(ACTIVE_PRESET_KEY) ?? localStorage.getItem(LEGACY_ACTIVE_PRESET_KEY) ?? localStorage.getItem(SINK_ACTIVE_PRESET_KEY);
   return JSON.parse(raw ?? "{}") as Record<string, PresetSelection>;
 }
 

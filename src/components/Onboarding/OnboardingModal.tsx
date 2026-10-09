@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMixerStore } from "../../store/mixer";
 import { useI18n, type TranslationKey } from "../../i18n";
-import { Ms } from "../Icons";
+import { Ms, channelAccentClass, channelIcon } from "../Icons";
 import { Modal } from "../Modal";
+import { Fader } from "../MixerBoard/Fader";
+import { DspSlider } from "../Mic/DspSlider";
+import { Toggle } from "../Toggle";
+import { volToDb } from "../../lib/audio";
+import { UNITY_VOLUME } from "../../store/volumeRange";
 
 type PreviewKind = "mixer" | "apps" | "profiles" | "microphone";
 
@@ -13,125 +18,203 @@ interface Step {
   preview: PreviewKind;
 }
 
-function PreviewFrame({
-  icon,
-  title,
-  children,
-}: Readonly<{ icon: string; title: string; children: ReactNode }>) {
+/** Real mixer-board markup (.mix-group/.strip/.Fader), fed demo state local
+ * to this modal - so the tour's first preview is a genuine, playable mixer
+ * rather than a lookalike drawing, and dragging it costs nothing since
+ * nothing here touches the real store. */
+function MixerPreview() {
+  const { t } = useI18n();
+  const demo = [
+    { name: "sink_game", label: t("onboarding.preview.game") },
+    { name: "sink_chat", label: t("onboarding.preview.chat") },
+    { name: "sink_media", label: t("onboarding.preview.media") },
+  ];
+  const [volumes, setVolumes] = useState<Record<string, number>>({ sink_game: 72, sink_chat: 48, sink_media: 61 });
+
   return (
-    <div className="ob-preview-frame" aria-hidden="true">
-      <div className="ob-preview-bar">
-        <span className="ob-preview-brand"><span /></span>
-        <Ms name={icon} />
-        <span>{title}</span>
-        <span className="ob-preview-status"><i /> Sonux</span>
+    <div className="mix-group mix-group-channels ob-mixer-demo">
+      <div className="group-head">
+        <Ms name="grid_view" className="gh-icon" />
+        <span className="gh-label">{t("mixer.group.channels")}</span>
       </div>
-      {children}
+      <div className="group-strips">
+        {demo.map((channel) => {
+          const value = volumes[channel.name];
+          return (
+            <div className={"strip channel-strip " + channelAccentClass(channel)} key={channel.name}>
+              <div className="strip-head">
+                <div className="strip-title-row">
+                  <span className="strip-icon"><Ms name={channelIcon(channel)} /></span>
+                  <div className="strip-name">{channel.label}</div>
+                </div>
+              </div>
+              <div className="strip-readout">
+                <div className="ro-value">
+                  <span className="ro-num">{value}</span>
+                  <span className="ro-pct">%</span>
+                </div>
+                <div className="db">{volToDb(value)}</div>
+              </div>
+              <div className="strip-body">
+                <div className="channel-fader">
+                  <Fader
+                    value={value}
+                    max={UNITY_VOLUME}
+                    ariaLabel={channel.label}
+                    onChange={(v) => setVolumes((prev) => ({ ...prev, [channel.name]: v }))}
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-function MixerPreview() {
-  const { t } = useI18n();
-  const strips = [
-    { icon: "sports_esports", label: t("onboarding.preview.game"), level: 72 },
-    { icon: "forum", label: t("onboarding.preview.chat"), level: 48 },
-    { icon: "music_note", label: t("onboarding.preview.media"), level: 61 },
-  ];
-  return (
-    <PreviewFrame icon="graphic_eq" title={t("navigation.mixer")}>
-      <div className="ob-mini-mixer">
-        <div className="ob-mini-section">
-          <span>{t("mixer.group.channels")}</span><Ms name="add" />
-        </div>
-        <div className="ob-mini-strips">
-          {strips.map((strip) => (
-            <div className="ob-mini-strip" key={strip.label}>
-              <Ms name={strip.icon} />
-              <strong>{strip.label}</strong>
-              <div className="ob-mini-fader"><i style={{ height: `${strip.level}%` }} /></div>
-              <small>{strip.level}%</small>
-            </div>
-          ))}
-          <div className="ob-mini-strip is-mix">
-            <Ms name="radio_button_checked" />
-            <strong>{t("onboarding.preview.streamMix")}</strong>
-            <div className="ob-mini-fader"><i style={{ height: "67%" }} /></div>
-            <small>67%</small>
-          </div>
-        </div>
-      </div>
-    </PreviewFrame>
-  );
-}
-
+/** Real channel-strip app well (.strip-apps/.strip-app-chip), showing one
+ * app parked on the wrong channel next to the one it belongs on. */
 function AppsPreview() {
   const { t } = useI18n();
   return (
-    <PreviewFrame icon="apps" title={t("navigation.applications")}>
-      <div className="ob-mini-apps">
-        <div className="ob-mini-section"><span>{t("onboarding.preview.running")}</span><small>2</small></div>
-        <div className="ob-mini-app-row">
-          <span className="ob-mini-app-icon"><Ms name="sports_esports" /></span>
-          <span><strong>{t("onboarding.preview.game")}</strong><small>{t("onboarding.preview.playing")}</small></span>
-          <Ms name="arrow_forward" className="ob-direction-arrow" />
-          <b><Ms name="sports_esports" /><span>{t("onboarding.preview.game")}</span></b>
+    <div className="ob-apps-demo">
+      <div className={"strip channel-strip " + channelAccentClass({ name: "sink_chat" })}>
+        <div className="strip-head">
+          <div className="strip-title-row">
+            <span className="strip-icon"><Ms name={channelIcon({ name: "sink_chat" })} /></span>
+            <div className="strip-name">{t("onboarding.preview.chat")}</div>
+          </div>
         </div>
-        <div className="ob-mini-app-row">
-          <span className="ob-mini-app-icon"><Ms name="language" /></span>
-          <span><strong>{t("onboarding.preview.browser")}</strong><small>{t("onboarding.preview.playing")}</small></span>
-          <Ms name="arrow_forward" className="ob-direction-arrow" />
-          <b><Ms name="music_note" /><span>{t("onboarding.preview.media")}</span></b>
+        <div className="strip-apps">
+          <div className="strip-apps-label">
+            {t("onboarding.flow.apps")}
+            <span className="strip-apps-count">{t("channel.appsMany", { count: 0 })}</span>
+          </div>
+          <div className="strip-apps-empty">
+            <Ms name="download" />
+            <span>{t("mixer.channel.dropApps")}</span>
+          </div>
         </div>
-        <div className="ob-mini-memory"><Ms name="check_circle" /> {t("onboarding.preview.routeRemembered")}</div>
       </div>
-    </PreviewFrame>
+
+      <Ms name="arrow_forward" className="ob-apps-arrow" />
+
+      <div className={"strip channel-strip " + channelAccentClass({ name: "sink_media" })}>
+        <div className="strip-head">
+          <div className="strip-title-row">
+            <span className="strip-icon"><Ms name={channelIcon({ name: "sink_media" })} /></span>
+            <div className="strip-name">{t("onboarding.preview.media")}</div>
+          </div>
+        </div>
+        <div className="strip-apps">
+          <div className="strip-apps-label">
+            {t("onboarding.flow.apps")}
+            <span className="strip-apps-count">{t("channel.appsOne", { count: 1 })}</span>
+          </div>
+          <div className="strip-app-chip">
+            <span className="strip-app-icon"><Ms name="language" /></span>
+            <span className="strip-app-name">{t("onboarding.preview.browser")}</span>
+            <span className="strip-app-live" title={t("mixer.running")} />
+            <Ms name="drag_indicator" className="strip-app-grip" />
+          </div>
+        </div>
+      </div>
+
+      <div className="ob-hint-line"><Ms name="check_circle" /> {t("onboarding.preview.routeRemembered")}</div>
+    </div>
   );
 }
 
+/** Real profile-library markup (.profile-library-row/.profile-application-rules). */
 function ProfilesPreview() {
   const { t } = useI18n();
+  const profiles = [
+    { name: t("onboarding.preview.gaming"), active: true },
+    { name: t("onboarding.preview.everyday"), active: false },
+    { name: t("onboarding.preview.streaming"), active: false },
+  ];
   return (
-    <PreviewFrame icon="bookmarks" title={t("navigation.profiles")}>
-      <div className="ob-mini-profiles">
-        <div className="ob-mini-profile-list">
-          <span className="is-active"><i />{t("onboarding.preview.gaming")}</span>
-          <span>{t("onboarding.preview.everyday")}</span>
-          <span>{t("onboarding.preview.streaming")}</span>
-        </div>
-        <div className="ob-mini-profile-detail">
-          <div><strong>{t("onboarding.preview.gaming")}</strong><span><i /> {t("profiles.active")}</span></div>
-          <p>{t("profiles.applications.description", { profile: t("onboarding.preview.gaming") })}</p>
-          <div className="ob-mini-link"><Ms name="sports_esports" /><strong>{t("onboarding.preview.game")}</strong><small>{t("onboarding.preview.autoSwitch")}</small></div>
-          <div className="ob-mini-saved"><Ms name="check" /> {t("onboarding.preview.profileSaved")}</div>
-        </div>
+    <div className="ob-profiles-demo">
+      <div className="profile-automation-list">
+        {profiles.map((profile) => (
+          <div className={"profile-library-row" + (profile.active ? " selected" : "")} key={profile.name}>
+            <span className="profile-library-select">
+              <Ms name={profile.active ? "check" : "bookmark"} />
+              <span><strong>{profile.name}</strong></span>
+            </span>
+          </div>
+        ))}
       </div>
-    </PreviewFrame>
+      <div className="card ob-profile-detail">
+        <div className="trigger-hint">{t("profiles.applications.description", { profile: profiles[0].name })}</div>
+        <div className="profile-application-rules">
+          <div>
+            <Ms name="deployed_code" />
+            <span className="profile-rule-copy">
+              {/* An application (not a channel or the profile): a well-known game, never translated. */}
+              <strong>Counter-Strike 2</strong>
+            </span>
+            <span className="ob-profile-auto"><Ms name="bolt" />{t("onboarding.preview.autoSwitch")}</span>
+          </div>
+        </div>
+        <div className="ob-hint-line"><Ms name="check" /> {t("onboarding.preview.profileSaved")}</div>
+      </div>
+    </div>
   );
 }
 
+/** Real mic-processing markup (.mic-processing-card/Toggle/DspSlider), with
+ * a couple of local sliders the visitor can actually try. */
 function MicrophonePreview() {
   const { t } = useI18n();
-  const processors = [
-    { icon: "noise_control_off", label: t("processing.noiseGate"), width: 58 },
-    { icon: "compress", label: t("processing.compressor"), width: 72 },
-    { icon: "vertical_align_top", label: t("processing.limiter"), width: 86 },
-  ];
+  const [gateOn, setGateOn] = useState(true);
+  const [gateThreshold, setGateThreshold] = useState(-42);
+  const [compOn, setCompOn] = useState(true);
+  const [compThreshold, setCompThreshold] = useState(-18);
+
   return (
-    <PreviewFrame icon="mic" title={t("microphone.title")}>
-      <div className="ob-mini-mic">
-        <div className="ob-mini-mic-head"><span><Ms name="mic" /> {t("microphone.processed")}</span><i /></div>
-        {processors.map((processor) => (
-          <div className="ob-mini-processor" key={processor.label}>
-            <Ms name={processor.icon} />
-            <strong>{processor.label}</strong>
-            <div><i style={{ width: `${processor.width}%` }} /></div>
-            <span className="ob-mini-toggle" />
+    <div className="ob-mic-demo">
+      <div className="card mic-processing-card">
+        <div className="processing-card-head">
+          <div className="processing-toggle-title">
+            <Toggle on={gateOn} onClick={() => setGateOn((v) => !v)} />
+            <div className="rtitle">{t("processing.noiseGate")}</div>
           </div>
-        ))}
-        <div className="ob-mini-memory"><Ms name="headphones" /> {t("onboarding.preview.readyInApps")}</div>
+        </div>
+        <DspSlider
+          label={t("processing.threshold")}
+          min={-80}
+          max={-10}
+          step={1}
+          unit=" dB"
+          value={gateThreshold}
+          defaultValue={-42}
+          disabled={!gateOn}
+          onChange={setGateThreshold}
+        />
       </div>
-    </PreviewFrame>
+      <div className="card mic-processing-card">
+        <div className="processing-card-head">
+          <div className="processing-toggle-title">
+            <Toggle on={compOn} onClick={() => setCompOn((v) => !v)} />
+            <div className="rtitle">{t("processing.compressor")}</div>
+          </div>
+        </div>
+        <DspSlider
+          label={t("processing.threshold")}
+          min={-60}
+          max={0}
+          step={1}
+          unit=" dB"
+          value={compThreshold}
+          defaultValue={-18}
+          disabled={!compOn}
+          onChange={setCompThreshold}
+        />
+      </div>
+      <div className="ob-hint-line"><Ms name="headphones" /> {t("onboarding.preview.readyInApps")}</div>
+    </div>
   );
 }
 
@@ -173,7 +256,8 @@ function ObProgress({ step, onSelect }: Readonly<{ step: number; onSelect: (step
   );
 }
 
-/** First-run orientation: four concise product previews, then a starting setup choice. */
+/** First-run orientation: four live, playable previews built from the app's
+ * own components, then a starting-setup choice. */
 export function OnboardingModal() {
   const { t } = useI18n();
   const show = useMixerStore((state) => state.showOnboarding);

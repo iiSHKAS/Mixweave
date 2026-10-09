@@ -85,12 +85,13 @@ export function EqEditor({ channel }: Readonly<EqEditorProps>) {
         </p>
       )}
       <div className="eqm-head">
-        <div className="processing-toggle-title">
+        <div className="processing-heading">
+          <span className="setting-icon"><Ms name="equalizer" /></span>
+          <div className="rtitle">{t("equalizer.title")}</div>
           <Toggle
             on={config.enabled}
             onClick={() => apply({ ...config, enabled: !config.enabled })}
           />
-          <div className="rtitle">{t("equalizer.title")}</div>
         </div>
         <div className="eqm-head-actions">
           <button

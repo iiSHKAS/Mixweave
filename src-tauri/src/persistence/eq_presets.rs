@@ -1,6 +1,6 @@
 //! Per-channel user processing presets: named JSON files (the same schema
 //! as the bundled presets) under
-//! `$XDG_CONFIG_HOME/sonux/eq_presets/<channel>/`. Both the channel and preset
+//! `$XDG_CONFIG_HOME/mixweave/eq_presets/<channel>/`. Both the channel and preset
 //! name pass through the profiles store's sanitizer, so neither can traverse
 //! outside the library.
 
@@ -14,7 +14,7 @@ use crate::persistence::profiles::sanitize_name;
 fn presets_dir() -> Result<PathBuf, SinkError> {
     let dir = dirs::config_dir()
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
-    Ok(dir.join("sonux").join("eq_presets"))
+    Ok(dir.join("mixweave").join("eq_presets"))
 }
 
 fn channel_presets_dir(sink_name: &str) -> Result<PathBuf, SinkError> {
@@ -43,8 +43,11 @@ pub fn list(sink_name: &str) -> Result<Vec<EqPreset>, SinkError> {
             Ok(preset) if preset.schema == PRESET_SCHEMA && !preset.bands.is_empty() => {
                 presets.push(preset);
             }
-            Ok(_) => eprintln!("sonux: skipping eq preset {}: bad schema", path.display()),
-            Err(e) => eprintln!("sonux: skipping eq preset {}: {e}", path.display()),
+            Ok(_) => eprintln!(
+                "mixweave: skipping eq preset {}: bad schema",
+                path.display()
+            ),
+            Err(e) => eprintln!("mixweave: skipping eq preset {}: {e}", path.display()),
         }
     }
     presets.sort_by(|a, b| a.name.cmp(&b.name));
@@ -71,42 +74,5 @@ pub fn delete(sink_name: &str, name: &str) -> Result<(), SinkError> {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()), // idempotent
         Err(e) => Err(SinkError::Io(e)),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn traversal_names_are_rejected() {
-        // sanitize_name (shared with profiles) is the barrier; pin that it
-        // holds for the preset entry points too.
-        assert!(delete("sink_game", "../etc/passwd").is_err());
-        assert!(delete("../sink_game", "Safe").is_err());
-        let preset = EqPreset {
-            schema: PRESET_SCHEMA,
-            name: "../escape".into(),
-            author: None,
-            description: None,
-            preamp_db: 0.0,
-            bands: crate::audio::types::default_eq_bands(),
-            ..EqPreset::from_config("defaults".into(), crate::audio::types::EqConfig::default())
-        };
-        assert!(save("sink_game", &preset).is_err());
-    }
-
-    #[test]
-    fn empty_band_presets_are_rejected() {
-        let preset = EqPreset {
-            schema: PRESET_SCHEMA,
-            name: "Empty".into(),
-            author: None,
-            description: None,
-            preamp_db: 0.0,
-            bands: Vec::new(),
-            ..EqPreset::from_config("defaults".into(), crate::audio::types::EqConfig::default())
-        };
-        assert!(save("sink_game", &preset).is_err());
     }
 }

@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
-import sonuxIcon from "../../src-tauri/icons/32x32.png";
+import appIcon from "../../src-tauri/icons/128x128.png";
 
-/** Material Symbol glyph (self-hosted via the material-symbols package). */
+/** Material Symbol glyph (self-hosted subset - see globals.css). */
 export function Ms({
   name,
   className,
@@ -22,9 +22,9 @@ export function Ms({
   );
 }
 
-/** The same Sonux application icon used by the desktop launcher. */
+/** The same Mixweave application icon used by the desktop launcher. */
 export function SinkMark() {
-  return <img src={sonuxIcon} alt="" aria-hidden="true" />;
+  return <img src={appIcon} alt="" aria-hidden="true" />;
 }
 
 /** Legacy fallback icons for channels created before icons existed. */

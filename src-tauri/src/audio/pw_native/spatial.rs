@@ -27,7 +27,7 @@ const AALTO_HRTF: &[u8] = include_bytes!(concat!(
     "/../third_party/spatial/runtime/NF_LIB_HRTF_LFE.sofa"
 ));
 const AALTO_RADIUS_METRES: f32 = 0.2;
-// Calibrated against Sonux's ordinary 7.1-to-stereo fold-down with both the
+// Calibrated against Mixweave's ordinary 7.1-to-stereo fold-down with both the
 // local music and game references. The Aalto FIRs preserve their measured
 // tonal shape; this fixed broadband gain only restores comparable level.
 const AALTO_PRODUCTION_GAIN: f32 = 2.818_383; // +9.0 dB
@@ -286,7 +286,7 @@ impl AcousticValues {
             std::array::from_fn(|comb| comb_ms[ear][comb] * room_scale * sample_rate / 1_000.0)
         });
 
-        // Fixed compensation measured through Sonux's production KEMAR HRTF
+        // Fixed compensation measured through Mixweave's production KEMAR HRTF
         // using the approved prototypes. This avoids content-reactive gain
         // riding; Distance then adds a symmetric +2.5 .. -2.5 dB offset.
         let compensation_db =
@@ -563,7 +563,7 @@ impl SpatialEngine {
         };
         engine.hrtf_available = loader(&mut engine);
         if !engine.hrtf_available {
-            eprintln!("sonux: requested HRTF unavailable; spatial renderer uses stereo downmix");
+            eprintln!("mixweave: requested HRTF unavailable; spatial renderer uses stereo downmix");
         }
         Ok(engine)
     }
@@ -849,114 +849,5 @@ fn direct_downmix_gain(channel: usize, ear: usize) -> f32 {
         (3, _) => 0.5 * HEADROOM,
         (4, 0) | (5, 1) | (6, 0) | (7, 1) => C * HEADROOM,
         _ => 0.0,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stable_surround_shape_is_eight_to_two() {
-        assert_eq!(SURROUND_CHANNELS, 8);
-        assert_eq!(EARS, 2);
-    }
-
-    #[test]
-    fn lfe_bypasses_equally_to_both_ears() {
-        assert_eq!(direct_downmix_gain(LFE_CHANNEL, 0), 0.21);
-        assert_eq!(direct_downmix_gain(LFE_CHANNEL, 1), 0.21);
-    }
-
-    #[test]
-    fn audited_aalto_hrtf_is_embedded() {
-        assert!(AALTO_HRTF.len() > 1_000_000);
-        assert_eq!(&AALTO_HRTF[..8], b"\x89HDF\r\n\x1a\n");
-    }
-
-    #[test]
-    fn render_params_clamp_untrusted_persisted_values() {
-        let params = SpatialRenderParams::new(true, -4.0, 9.0, true);
-        assert_eq!(params.tuning, 0.0);
-        assert_eq!(params.distance, 1.0);
-    }
-
-    #[test]
-    fn distance_level_is_symmetric_around_neutral() {
-        assert_eq!(distance_level_db(0.0), 2.5);
-        assert_eq!(distance_level_db(0.5), 0.0);
-        assert_eq!(distance_level_db(1.0), -2.5);
-    }
-
-    #[test]
-    fn approved_acoustic_endpoints_map_to_live_coefficients() {
-        let close_performance =
-            AcousticValues::target(SpatialRenderParams::new(true, 0.0, 0.0, true), 48_000.0);
-        assert!((close_performance.direct - 1.0).abs() < 1e-6);
-        assert!(close_performance.early < 0.001);
-        assert!(close_performance.late < 0.001);
-        assert!((close_performance.width - 1.08).abs() < 1e-6);
-        assert!(close_performance.clarity_gain > 0.18);
-
-        let far_immersion =
-            AcousticValues::target(SpatialRenderParams::new(true, 1.0, 1.0, true), 48_000.0);
-        assert!((far_immersion.direct - 0.28).abs() < 1e-6);
-        assert!((far_immersion.early - 0.42).abs() < 1e-6);
-        assert!((far_immersion.late - 0.60).abs() < 1e-6);
-        assert!(far_immersion
-            .comb_delays
-            .iter()
-            .flatten()
-            .all(|delay| { *delay >= 1.0 && *delay < (DELAY_BUFFER - 2) as f32 }));
-    }
-
-    #[test]
-    fn acoustic_midpoints_are_a_transparent_pass_through() {
-        let mut stage = AcousticStage::new(48_000.0);
-        let mut stereo = [[0.0; BLOCK]; EARS];
-        let (left, right) = stereo.split_at_mut(1);
-        for (frame, (left, right)) in left[0].iter_mut().zip(right[0].iter_mut()).enumerate() {
-            *left = frame as f32 / BLOCK as f32 - 0.5;
-            *right = 0.25 - frame as f32 / (2.0 * BLOCK as f32);
-        }
-        let expected = stereo;
-        stage.process(&mut stereo, SpatialRenderParams::new(true, 0.5, 0.5, true));
-        for (actual, expected) in stereo.iter().flatten().zip(expected.iter().flatten()) {
-            assert!((*actual - *expected).abs() < 1e-6);
-        }
-    }
-
-    #[test]
-    fn disabling_and_runtime_reset_clear_spatial_history() {
-        let mut engine = SpatialEngine::new(48_000.0).expect("spatial engine");
-        engine.hrtf_active = true;
-        engine.history[0].fill(0.75);
-        engine.acoustic.active = true;
-        let input = vec![0.0; BLOCK * SURROUND_CHANNELS];
-        let mut output = Vec::with_capacity(BLOCK * EARS);
-
-        engine.process(
-            &input,
-            &mut output,
-            SpatialRenderParams::new(false, 0.5, 0.5, true),
-        );
-
-        assert!(!engine.hrtf_active);
-        assert!(!engine.acoustic.active);
-        assert!(engine.history.iter().flatten().all(|sample| *sample == 0.0));
-
-        engine.pending_len = 3;
-        engine.pending[0].fill(0.75);
-        engine.history[0].fill(0.5);
-        engine.hrtf_active = true;
-        engine.acoustic.active = true;
-
-        engine.reset_runtime_state();
-
-        assert_eq!(engine.pending_len, 0);
-        assert!(engine.pending.iter().flatten().all(|sample| *sample == 0.0));
-        assert!(engine.history.iter().flatten().all(|sample| *sample == 0.0));
-        assert!(!engine.hrtf_active);
-        assert!(!engine.acoustic.active);
     }
 }

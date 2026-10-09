@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { UpdateBanner } from "./components/Updates";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { TitleBar } from "./components/TitleBar/TitleBar";
 import { MixerBoard } from "./components/MixerBoard/MixerBoard";
@@ -9,15 +10,17 @@ import { SettingsScreen } from "./components/Settings/SettingsScreen";
 import { ChannelScreen } from "./components/Channel/ChannelScreen";
 import { ResizeHandles } from "./components/ResizeHandles";
 import { BalanceBar } from "./components/MixerBoard/BalanceBar";
-import { ProfileMenu } from "./components/TitleBar/ProfileMenu";
+import { MixerOptionsMenu } from "./components/TitleBar/MixerOptionsMenu";
 import { ProfileSwitchingScreen } from "./components/ProfileSwitching/ProfileSwitchingScreen";
-import { channelAccentClass, channelIcon, Ms } from "./components/Icons";
+import { channelIcon, Ms } from "./components/Icons";
 import { Tooltip } from "./components/Tooltip";
 import { useAudio } from "./hooks/useAudio";
 import { restartApplication, useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { takeRestoreWarning } from "./lib/restoreWarning";
 import { useI18n, type TranslationKey } from "./i18n";
 import { useMixerStore } from "./store/mixer";
+import { allowBoostWhereInUse, MASTER_STRIP_IDS, useVolumeRange } from "./store/volumeRange";
+import { MASTER_BUS, STREAMER_MODE_BUS } from "./types";
 
 const SIDE_NAV = [
   { id: "mixer", icon: "graphic_eq", label: "navigation.mixer" },
@@ -41,12 +44,42 @@ export default function App() {
   const selectedMicNode = useMixerStore((s) => s.selectedMicNode);
   const selectMic = useMixerStore((s) => s.selectMic);
   const activeWorkspaceTab = useRef<HTMLButtonElement | null>(null);
+  // Stable across renders (unlike an inline arrow at each MixerBoard call
+  // site) so BusStrip/MicStrip's React.memo isn't defeated by a fresh
+  // onManageProfiles/onOpenSettings closure every time App re-renders.
+  const openProfiles = useCallback(() => setNav("switching"), []);
+  const openMic = useCallback(() => setNav("mic"), []);
 
   useEffect(() => {
     void getVersion().then(setVersion);
     const restoreWarning = takeRestoreWarning();
     if (restoreWarning) useMixerStore.setState({ error: restoreWarning });
   }, []);
+
+  const buses = useMixerStore((s) => s.buses);
+  useEffect(() => {
+    if (channels.length === 0) return;
+    const streamerBus = buses.find((bus) => bus.name === STREAMER_MODE_BUS);
+    // Master is capped at 100 % unless amplification was chosen for it.
+    const masterBoost = useVolumeRange.getState().overrides[MASTER_BUS] === true;
+    if (!masterBoost) {
+      for (const bus of buses) {
+        if (MASTER_STRIP_IDS.includes(bus.name) && bus.volume_percent > 100) {
+          void useMixerStore.getState().setBusVolume(bus.name, 100);
+        }
+      }
+    }
+    allowBoostWhereInUse([
+      ...channels.map((channel) => ({ id: channel.name, levels: [channel.volume_percent, channel.stream_send_volume_percent] })),
+      ...buses
+        .filter((bus) => bus.name !== STREAMER_MODE_BUS)
+        .map((bus) => ({
+          id: bus.name,
+          levels: bus.name === MASTER_BUS && streamerBus ? [bus.volume_percent, streamerBus.volume_percent] : [bus.volume_percent],
+        })),
+      ...micConfigs.map((mic) => ({ id: mic.node_name, levels: [mic.gain_percent, mic.stream_send_gain_percent] })),
+    ]);
+  }, [buses, channels, micConfigs]);
 
   const selectedChannelName = nav.startsWith("channel:") ? nav.slice("channel:".length) : null;
   const selectedChannel = channels.find((channel) => channel.name === selectedChannelName);
@@ -68,9 +101,8 @@ export default function App() {
   if (nav === "mixer") {
     screen = (
       <MixerBoard
-        onOpenChannel={(name) => setNav(`channel:${name}`)}
-        onOpenProfiles={() => setNav("switching")}
-        onOpenMic={() => setNav("mic")}
+        onOpenProfiles={openProfiles}
+        onOpenMic={openMic}
       />
     );
   }
@@ -86,9 +118,8 @@ export default function App() {
   else if (selectedChannel) screen = <ChannelScreen channel={selectedChannel} />;
   else screen = (
     <MixerBoard
-      onOpenChannel={(name) => setNav(`channel:${name}`)}
-      onOpenProfiles={() => setNav("switching")}
-      onOpenMic={() => setNav("mic")}
+      onOpenProfiles={openProfiles}
+      onOpenMic={openMic}
     />
   );
 
@@ -99,6 +130,7 @@ export default function App() {
   return (
     <div className="window">
       <TitleBar screen={currentLabel} />
+      <UpdateBanner />
 
       {error && (
         <div className="error-banner" role="alert">
@@ -153,57 +185,66 @@ export default function App() {
 
         <main className="workspace-shell">
           <div className="workspace-bar">
-            <nav
-              className="workspace-tabs"
-              aria-label={t("navigation.audioWorkspace")}
-              onWheel={(event) => {
-                if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth || event.deltaY === 0) return;
-                event.currentTarget.scrollLeft += event.deltaY;
-                event.preventDefault();
-              }}
-            >
+            <nav className="workspace-tabs" aria-label={t("navigation.audioWorkspace")}>
               <button
                 type="button"
                 className={"workspace-tab" + (nav === "mixer" ? " active" : "")}
                 ref={nav === "mixer" ? activeWorkspaceTab : undefined}
                 onClick={() => setNav("mixer")}
               >
-                {t("navigation.mixer")}
+                <Ms name="tune" />
+                <span className="workspace-tab-label">{t("navigation.mixer")}</span>
               </button>
-              {channels.map((channel) => (
-                <button
-                  type="button"
-                  key={channel.name}
-                  className={`workspace-tab ${channelAccentClass(channel)}` + (selectedChannelName === channel.name ? " active" : "")}
-                  ref={selectedChannelName === channel.name ? activeWorkspaceTab : undefined}
-                  onClick={() => setNav(`channel:${channel.name}`)}
-                >
-                  <Ms name={channelIcon(channel)} />
-                  {channel.label}
-                </button>
-              ))}
-              {visibleMics.map((mic, index) => {
-                const active = nav === "mic" && selectedMicNode === mic.node_name;
-                return (
+
+              <div
+                className="workspace-tabs-scroll"
+                aria-label={t("navigation.customChannels")}
+                onWheel={(event) => {
+                  if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth || event.deltaY === 0) return;
+                  event.currentTarget.scrollLeft += event.deltaY;
+                  event.preventDefault();
+                }}
+              >
+                {channels.map((channel) => (
                   <button
                     type="button"
-                    key={mic.node_name}
-                    className={"workspace-tab strip-accent-mic" + (active ? " active" : "")}
-                    ref={active ? activeWorkspaceTab : undefined}
-                    onClick={() => {
-                      selectMic(mic.node_name);
-                      setNav("mic");
-                    }}
+                    key={channel.name}
+                    className={"workspace-tab" + (selectedChannelName === channel.name ? " active" : "")}
+                    ref={selectedChannelName === channel.name ? activeWorkspaceTab : undefined}
+                    onClick={() => setNav(`channel:${channel.name}`)}
                   >
-                    <Ms name={index === 0 ? "mic" : "mic_external_on"} />
-                    {index === 0 ? t("navigation.microphone") : mic.output_label}
+                    <Ms name={channelIcon(channel)} />
+                    <span className="workspace-tab-label">{channel.label}</span>
                   </button>
-                );
-              })}
+                ))}
+              </div>
+
+              <div className="workspace-tabs-end">
+                {visibleMics.map((mic, index) => {
+                  const active = nav === "mic" && selectedMicNode === mic.node_name;
+                  return (
+                    <button
+                      type="button"
+                      key={mic.node_name}
+                      className={"workspace-tab" + (active ? " active" : "")}
+                      ref={active ? activeWorkspaceTab : undefined}
+                      onClick={() => {
+                        selectMic(mic.node_name);
+                        setNav("mic");
+                      }}
+                    >
+                      <Ms name={index === 0 ? "mic" : "mic_external_on"} />
+                      <span className="workspace-tab-label">
+                        {index === 0 ? t("navigation.microphone") : mic.output_label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </nav>
             <div className="workspace-tab-tools">
               <BalanceBar />
-              <ProfileMenu onManageProfiles={() => setNav("switching")} />
+              <MixerOptionsMenu onManageProfiles={() => setNav("switching")} />
             </div>
           </div>
           {screen}

@@ -1,9 +1,10 @@
 import type { LocalePreference } from "../i18nCore";
 
-export const LANGUAGE_STORAGE_KEY = "sonux-language";
+export const LANGUAGE_STORAGE_KEY = "mixweave-language";
+const LEGACY_LANGUAGE_STORAGE_KEY = "sonux-language";
 
 export function readLanguagePreference(): LocalePreference {
-  const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+  const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY) ?? localStorage.getItem(LEGACY_LANGUAGE_STORAGE_KEY);
   if (!saved || saved === "system") return { mode: "system" };
   return { mode: "locale", locale: saved };
 }

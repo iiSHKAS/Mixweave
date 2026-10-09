@@ -18,7 +18,8 @@ function fileName(path: string): string {
   return parts[parts.length - 1] ?? path;
 }
 
-const SECTION_STATE_KEY = "sonux-profile-section-visibility";
+const SECTION_STATE_KEY = "mixweave-profile-section-visibility";
+const LEGACY_SECTION_STATE_KEY = "sonux-profile-section-visibility";
 
 interface SectionVisibility {
   channels: boolean;
@@ -27,7 +28,7 @@ interface SectionVisibility {
 
 function readSectionVisibility(): SectionVisibility {
   try {
-    const saved = JSON.parse(localStorage.getItem(SECTION_STATE_KEY) ?? "null") as Partial<SectionVisibility> | null;
+    const saved = JSON.parse(localStorage.getItem(SECTION_STATE_KEY) ?? localStorage.getItem(LEGACY_SECTION_STATE_KEY) ?? "null") as Partial<SectionVisibility> | null;
     return {
       channels: typeof saved?.channels === "boolean" ? saved.channels : true,
       applications: typeof saved?.applications === "boolean" ? saved.applications : true,
@@ -216,9 +217,12 @@ export function ProfileSwitchingScreen({
 
   return (
     <div className="content profile-switching">
-      <div className="screen-head">
-        <h1>{t("profiles.title")}</h1>
-        <HelpInfo label={t("profiles.title")} text={t("profiles.description")} className="screen-head-help" />
+      <div className="screen-head screen-head-rich">
+        <span className="head-icon"><Ms name="bookmarks" /></span>
+        <div className="head-copy">
+          <h1>{t("profiles.title")}</h1>
+          <p className="head-sub">{t("profiles.description")}</p>
+        </div>
       </div>
       <div className="profile-page-layout">
           <aside className="profile-automation-library">
@@ -405,7 +409,7 @@ export function ProfileSwitchingScreen({
           <div className="modal-label">{t("profiles.create.startWith")}</div>
           <div className="profile-create-modes">
             <button type="button" className={newProfileMode === "fresh" ? "selected" : ""} onClick={() => setNewProfileMode("fresh")}>
-              <Ms name="draft" /><span><strong>{t("profiles.create.fresh")}</strong><small>{t("profiles.create.freshHint")}</small></span><Ms name={newProfileMode === "fresh" ? "radio_button_checked" : "radio_button_unchecked"} />
+              <Ms name="note_add" /><span><strong>{t("profiles.create.fresh")}</strong><small>{t("profiles.create.freshHint")}</small></span><Ms name={newProfileMode === "fresh" ? "radio_button_checked" : "radio_button_unchecked"} />
             </button>
             <button
               type="button"

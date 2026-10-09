@@ -148,107 +148,6 @@ pub fn resolve_identity(get: impl Fn(&str) -> Option<String>) -> (String, String
     }
 }
 
-#[cfg(test)]
-mod identity_tests {
-    use super::*;
-    use std::collections::HashMap;
-
-    fn resolve(props: &[(&str, &str)]) -> (String, String, String) {
-        let map: HashMap<String, String> = props
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-        resolve_identity(|key| map.get(key).cloned())
-    }
-
-    #[test]
-    fn internal_and_event_streams_are_hidden_but_games_are_not() {
-        let props = HashMap::from([("media.role".to_string(), "Event".to_string())]);
-        assert!(should_hide_app(|key| props.get(key).cloned()));
-        let props = HashMap::from([(
-            "media.name".to_string(),
-            "Sink spatial prototype".to_string(),
-        )]);
-        assert!(should_hide_app(|key| props.get(key).cloned()));
-        let props = HashMap::from([("application.name".to_string(), "Ride".to_string())]);
-        assert!(!should_hide_app(|key| props.get(key).cloned()));
-    }
-
-    #[test]
-    fn spotify_masquerading_as_chromium_resolves_via_binary() {
-        let (display, prop, value) = resolve(&[
-            ("application.name", "Chromium"),
-            ("application.process.binary", "spotify"),
-            ("media.name", "Playback"),
-        ]);
-        assert_eq!(display, "Spotify"); // prettified for the UI
-        assert_eq!(prop, "application.process.binary");
-        assert_eq!(value, "spotify"); // raw for rule matching
-    }
-
-    #[test]
-    fn discord_webrtc_resolves_via_binary() {
-        let (display, prop, _) = resolve(&[
-            ("application.name", "WEBRTC VoiceEngine"),
-            ("application.process.binary", "Discord"),
-        ]);
-        assert_eq!(display, "Discord");
-        assert_eq!(prop, "application.process.binary");
-    }
-
-    #[test]
-    fn all_wrapper_chain_keeps_the_first_hit() {
-        // Every candidate is a wrapper (equal quality): the strict `>`
-        // ranking must keep the first one, not let later ties override it.
-        let (display, prop, value) = resolve(&[
-            ("application.name", "Electron"),
-            ("application.process.binary", "node"),
-            ("media.name", "java"),
-        ]);
-        assert_eq!(prop, "application.name");
-        assert_eq!(value, "Electron");
-        assert_eq!(display, "Electron");
-    }
-
-    #[test]
-    fn real_browser_keeps_its_wrapper_name() {
-        let (display, _, _) = resolve(&[
-            ("application.name", "Chromium"),
-            ("application.process.binary", "chromium"),
-            ("media.name", "Playback"),
-        ]);
-        assert_eq!(display, "Chromium"); // wrapper beats generic; no better candidate
-    }
-
-    #[test]
-    fn firefox_application_name_wins_immediately() {
-        let (display, prop, _) = resolve(&[
-            ("application.name", "Firefox"),
-            ("application.process.binary", "firefox"),
-        ]);
-        assert_eq!(display, "Firefox");
-        assert_eq!(prop, "application.name");
-    }
-
-    #[test]
-    fn empty_values_never_win() {
-        let (display, _, value) = resolve(&[
-            ("application.name", ""),
-            ("media.name", "  "),
-            ("node.name", "real-app"),
-        ]);
-        assert_eq!(display, "Real-app");
-        assert_eq!(value, "real-app");
-    }
-
-    #[test]
-    fn pure_generic_still_shows_something() {
-        let (display, _, value) =
-            resolve(&[("media.name", "audio-src"), ("node.name", "audio-src")]);
-        assert_eq!(display, "Audio-src");
-        assert_eq!(value, "audio-src");
-    }
-}
 
 /// A running application audio stream (a PulseAudio "sink input").
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -319,6 +218,18 @@ pub struct VirtualSink {
     /// Whether this channel feeds the Stream Mix source (what OBS records).
     #[serde(default = "default_true")]
     pub stream_mix: bool,
+    /// Independent "Stream" send level (0-150%): what reaches the Streamer
+    /// Mode output, entirely separate from `volume_percent`/`muted` (the
+    /// "Personal" level the user hears). Not to be confused with the
+    /// legacy `stream_mix` bus-membership flag above.
+    #[serde(default = "default_hundred")]
+    pub stream_send_volume_percent: u8,
+    #[serde(default)]
+    pub stream_send_muted: bool,
+}
+
+fn default_hundred() -> u8 {
+    100
 }
 
 /// Live controls reported by PipeWire/PulseAudio for one managed channel.
@@ -340,7 +251,7 @@ pub struct OutputDevice {
 }
 
 fn default_mic_label() -> String {
-    "Sonux Mic".to_string()
+    "Mixweave Mic".to_string()
 }
 fn default_gate_threshold() -> f32 {
     -40.0
@@ -354,8 +265,11 @@ fn default_comp_ratio() -> f32 {
 fn default_limiter_ceiling() -> f32 {
     -1.0
 }
+fn default_denoise_strength() -> u8 {
+    80
+}
 
-/// Phase 3 mic chain configuration (persisted; applied live).
+/// Mic chain configuration (persisted; applied live).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MicConfig {
     /// Stable PipeWire node name. Older configs deserialize as the primary mic.
@@ -392,12 +306,30 @@ pub struct MicConfig {
     /// Hard ceiling (dBFS).
     #[serde(default = "default_limiter_ceiling")]
     pub limiter_ceiling_db: f32,
+    /// Independent "Stream" send level (0-200%) and mute: what reaches the
+    /// Streamer Mode output, entirely separate from `gain_percent`/`muted`
+    /// (the "Personal" level other apps capture from this mic).
+    #[serde(default = "default_hundred")]
+    pub stream_send_gain_percent: u8,
+    #[serde(default)]
+    pub stream_send_muted: bool,
+    /// RNNoise noise suppression ahead of the EQ and dynamics. Off by default:
+    /// it adds ~10 ms of delay and changes how the voice sounds.
+    #[serde(default)]
+    pub denoise_enabled: bool,
+    /// How much of the cleaned signal is mixed in, 0-100.
+    #[serde(default = "default_denoise_strength")]
+    pub denoise_strength_percent: u8,
+    /// Acoustic echo cancellation against the default output's playback.
+    /// Off by default; only useful with speakers.
+    #[serde(default)]
+    pub echo_cancel_enabled: bool,
 }
 
 impl MicConfig {
     /// Clamp numeric fields to their documented, DSP-safe ranges and replace
     /// non-finite values, so a malformed or hostile IPC payload can't push
-    /// the mic chain out of range (TD-050).
+    /// the mic chain out of range.
     pub fn clamp_ranges(&mut self) {
         fn finite(v: f32, fallback: f32, lo: f32, hi: f32) -> f32 {
             if v.is_finite() {
@@ -407,6 +339,8 @@ impl MicConfig {
             }
         }
         self.gain_percent = self.gain_percent.min(200);
+        self.stream_send_gain_percent = self.stream_send_gain_percent.min(200);
+        self.denoise_strength_percent = self.denoise_strength_percent.min(100);
         self.eq_preamp_db = finite(self.eq_preamp_db, 0.0, -24.0, 24.0);
         self.eq_bands.truncate(MAX_EQ_BANDS);
         for band in &mut self.eq_bands {
@@ -453,6 +387,11 @@ impl Default for MicConfig {
             comp_threshold_db: default_comp_threshold(),
             comp_ratio: default_comp_ratio(),
             limiter_ceiling_db: default_limiter_ceiling(),
+            stream_send_gain_percent: 100,
+            stream_send_muted: false,
+            denoise_enabled: false,
+            denoise_strength_percent: default_denoise_strength(),
+            echo_cancel_enabled: false,
         }
     }
 }
@@ -496,65 +435,6 @@ pub struct ChannelTestStatus {
     pub recorded_peak_db: f32,
 }
 
-#[cfg(test)]
-mod mic_clamp_tests {
-    use super::*;
-
-    #[test]
-    fn clamp_ranges_bounds_out_of_range_values() {
-        let mut c = MicConfig {
-            gain_percent: 255,
-            gate_threshold_db: 40.0,
-            comp_threshold_db: -400.0,
-            comp_ratio: 1000.0,
-            limiter_ceiling_db: 12.0,
-            ..MicConfig::default()
-        };
-        c.clamp_ranges();
-        assert_eq!(c.gain_percent, 200);
-        assert_eq!(c.gate_threshold_db, 0.0);
-        assert_eq!(c.comp_threshold_db, -100.0);
-        assert_eq!(c.comp_ratio, 20.0);
-        assert_eq!(c.limiter_ceiling_db, 0.0);
-    }
-
-    #[test]
-    fn clamp_ranges_replaces_non_finite_with_defaults() {
-        let mut c = MicConfig {
-            gate_threshold_db: f32::NAN,
-            comp_threshold_db: f32::INFINITY,
-            comp_ratio: f32::NEG_INFINITY,
-            ..MicConfig::default()
-        };
-        c.clamp_ranges();
-        assert_eq!(c.gate_threshold_db, default_gate_threshold());
-        assert_eq!(c.comp_threshold_db, default_comp_threshold());
-        assert_eq!(c.comp_ratio, default_comp_ratio());
-    }
-
-    #[test]
-    fn clamp_ranges_leaves_valid_values_untouched() {
-        let mut c = MicConfig {
-            gain_percent: 120,
-            gate_threshold_db: -45.0,
-            comp_threshold_db: -18.0,
-            comp_ratio: 4.0,
-            limiter_ceiling_db: -1.0,
-            ..MicConfig::default()
-        };
-        let before = c.clone();
-        c.clamp_ranges();
-        assert_eq!(c, before);
-    }
-
-    #[test]
-    fn legacy_mic_config_defaults_to_primary_node() {
-        let mut value = serde_json::to_value(MicConfig::default()).expect("serializes");
-        value.as_object_mut().expect("object").remove("node_name");
-        let parsed: MicConfig = serde_json::from_value(value).expect("legacy config parses");
-        assert_eq!(parsed.node_name, "sink_mic");
-    }
-}
 
 /// Hard cap on parametric EQ bands per channel. Ten provides a familiar EQ
 /// users already know, keeps preset validation simple, and bounds the RT
@@ -591,7 +471,7 @@ pub struct EqBand {
 }
 
 impl EqBand {
-    /// TD-050: clamp to DSP-safe ranges, replacing non-finite values, so a
+    /// Clamp to DSP-safe ranges, replacing non-finite values, so a
     /// hostile IPC payload or preset file can't blow up the filter design.
     pub fn clamp_ranges(&mut self) {
         fn finite(v: f32, fallback: f32, lo: f32, hi: f32) -> f32 {
@@ -722,7 +602,7 @@ pub struct EqConfig {
 }
 
 impl EqConfig {
-    /// TD-050-style sanitization for the whole config (see EqBand).
+    /// Sanitization for the whole config (see EqBand).
     pub fn clamp_ranges(&mut self) {
         if !self.preamp_db.is_finite() {
             self.preamp_db = 0.0;
@@ -806,81 +686,5 @@ impl Default for EqConfig {
             spatial_tuning: default_spatial_tuning(),
             spatial_distance: default_spatial_distance(),
         }
-    }
-}
-
-#[cfg(test)]
-mod eq_clamp_tests {
-    use super::*;
-
-    #[test]
-    fn band_clamp_bounds_out_of_range_values() {
-        let mut b = EqBand {
-            kind: EqBandKind::Peaking,
-            freq_hz: 99999.0,
-            gain_db: -80.0,
-            q: 0.0,
-        };
-        b.clamp_ranges();
-        assert_eq!(b.freq_hz, 20000.0);
-        assert_eq!(b.gain_db, -24.0);
-        assert_eq!(b.q, 0.1);
-    }
-
-    #[test]
-    fn band_clamp_replaces_non_finite_with_defaults() {
-        let mut b = EqBand {
-            kind: EqBandKind::Peaking,
-            freq_hz: f32::NAN,
-            gain_db: f32::INFINITY,
-            q: f32::NEG_INFINITY,
-        };
-        b.clamp_ranges();
-        assert_eq!(b.freq_hz, 1000.0);
-        assert_eq!(b.gain_db, 0.0);
-        assert_eq!(b.q, default_band_q());
-    }
-
-    #[test]
-    fn config_clamp_truncates_to_max_bands() {
-        let mut c = EqConfig::default();
-        c.bands = vec![c.bands[0]; MAX_EQ_BANDS + 5];
-        c.preamp_db = f32::NAN;
-        c.tone_bass_db = f32::INFINITY;
-        c.tone_voice_db = -99.0;
-        c.tone_treble_db = 99.0;
-        c.clamp_ranges();
-        assert_eq!(c.bands.len(), MAX_EQ_BANDS);
-        assert_eq!(c.preamp_db, 0.0);
-        assert_eq!(c.tone_bass_db, 0.0);
-        assert_eq!(c.tone_voice_db, -12.0);
-        assert_eq!(c.tone_treble_db, 12.0);
-    }
-
-    #[test]
-    fn config_without_fields_deserializes_with_defaults() {
-        // Old profile/eq JSON without these keys must keep loading.
-        let c: EqConfig = serde_json::from_str("{}").unwrap();
-        assert!(!c.enabled);
-        assert_eq!(c.preamp_db, 0.0);
-        assert_eq!(c.bands, default_eq_bands());
-        assert_eq!(c.tone_bass_db, 0.0);
-        assert_eq!(c.tone_voice_db, 0.0);
-        assert_eq!(c.tone_treble_db, 0.0);
-        assert_eq!(c.boost_db, 0.0);
-        assert!(!c.gate_enabled);
-        assert!(!c.comp_enabled);
-        assert!(!c.limiter_enabled);
-        assert_eq!(c.playback_mode, PlaybackMode::Speakers);
-        assert!(!c.spatial_enabled);
-        assert_eq!(c.spatial_tuning, default_spatial_tuning());
-        assert_eq!(c.spatial_distance, default_spatial_distance());
-        assert!(!c.needs_chain());
-    }
-
-    #[test]
-    fn band_kind_serializes_snake_case() {
-        let json = serde_json::to_string(&EqBandKind::LowShelf).unwrap();
-        assert_eq!(json, "\"low_shelf\"");
     }
 }

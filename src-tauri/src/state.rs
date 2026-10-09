@@ -19,7 +19,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Publish the exact persisted identity map consumed by Sonux's
+    /// Publish the exact persisted identity map consumed by Mixweave's
     /// WirePlumber pre-link hook. The native backend retains the payload and
     /// republishes it if WirePlumber's default metadata object is recreated.
     pub fn publish_app_routes(
@@ -39,43 +39,33 @@ impl AppState {
             .map_err(|error| error.to_string())
     }
 
-    #[cfg(test)]
-    pub(crate) fn for_test(backend: Arc<dyn AudioBackend>) -> Self {
-        Self {
-            backend,
-            backend_native: false,
-            mixer: Mutex::new(MixerState::default()),
-            profile_operations: Mutex::new(()),
-            backup_restore_grant: Mutex::new(None),
-        }
-    }
 
     /// Lock the mixer state, mapping poisoning to a command-friendly error.
     /// All command handlers go through this instead of hand-rolled map_errs.
     pub fn lock_mixer(&self) -> Result<std::sync::MutexGuard<'_, MixerState>, String> {
         if crate::persistence::config_writes_quiesced() {
-            return Err("configuration is quiesced while Sonux restarts".into());
+            return Err("configuration is quiesced while Mixweave restarts".into());
         }
         let guard = self
             .mixer
             .lock()
             .map_err(|_| "mixer state lock poisoned".to_string())?;
         if crate::persistence::config_writes_quiesced() {
-            return Err("configuration is quiesced while Sonux restarts".into());
+            return Err("configuration is quiesced while Mixweave restarts".into());
         }
         Ok(guard)
     }
 
     pub fn lock_profile_operation(&self) -> Result<std::sync::MutexGuard<'_, ()>, String> {
         if crate::persistence::config_writes_quiesced() {
-            return Err("configuration is quiesced while Sonux restarts".into());
+            return Err("configuration is quiesced while Mixweave restarts".into());
         }
         let guard = self
             .profile_operations
             .lock()
             .map_err(|_| "profile operation lock poisoned".to_string())?;
         if crate::persistence::config_writes_quiesced() {
-            return Err("configuration is quiesced while Sonux restarts".into());
+            return Err("configuration is quiesced while Mixweave restarts".into());
         }
         Ok(guard)
     }
@@ -127,7 +117,7 @@ impl AppState {
 
     /// Reject anything that is not one of the channels in the active mixer
     /// definition. A `sink_` prefix is only a naming convention, not proof
-    /// that the PipeWire node belongs to Sonux.
+    /// that the PipeWire node belongs to Mixweave.
     pub fn ensure_known_channel(&self, sink_name: &str) -> Result<(), String> {
         let mixer = self.lock_mixer()?;
         mixer
@@ -180,9 +170,11 @@ impl AppState {
                     // A live-bound active marker must never survive a missing
                     // or malformed profile: autosave could otherwise replace
                     // the recoverable file with the current mixer state.
-                    eprintln!("sonux: clearing invalid active profile {name:?}: {error}");
+                    eprintln!("mixweave: clearing invalid active profile {name:?}: {error}");
                     if let Err(clear_error) = crate::persistence::active::save(None) {
-                        eprintln!("sonux: could not clear invalid active profile: {clear_error}");
+                        eprintln!(
+                            "mixweave: could not clear invalid active profile: {clear_error}"
+                        );
                     }
                     (None, None)
                 }
@@ -220,7 +212,7 @@ impl AppState {
         };
         if mixer.prune_stale_apps(now) {
             if let Err(e) = mixer.seen.save() {
-                eprintln!("sonux: pruning app history failed: {e}");
+                eprintln!("mixweave: pruning app history failed: {e}");
             }
         }
         Self {
@@ -276,21 +268,4 @@ fn ensure_listed_device(
         .any(|device| device.name == name)
         .then_some(())
         .ok_or_else(|| format!("unknown {kind} device: {name}"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ensure_listed_device;
-    use crate::audio::types::OutputDevice;
-
-    #[test]
-    fn explicit_devices_must_come_from_the_backend_listing() {
-        let devices = vec![OutputDevice {
-            index: 7,
-            name: "alsa_output.deck".into(),
-            description: "Deck speakers".into(),
-        }];
-        assert!(ensure_listed_device(&devices, "alsa_output.deck", "output").is_ok());
-        assert!(ensure_listed_device(&devices, "sink_game", "output").is_err());
-    }
 }

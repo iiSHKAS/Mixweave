@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useMixerStore } from "../../store/mixer";
 import type { VirtualSink } from "../../types";
 import { defaultEqConfig, MAX_VOLUME } from "../../types";
+import { useVolumeCeiling } from "../../store/volumeRange";
+import { VolumeRangeToggle } from "../VolumeRangeToggle";
 import { volToDb } from "../../lib/audio";
 import { HSlider } from "../AppList/HSlider";
 import { EqEditor } from "../Eq/EqModal";
@@ -16,6 +18,7 @@ import { applicationGroupKey, groupSeenApps } from "../../lib/appGroups";
 
 export function ChannelScreen({ channel }: Readonly<{ channel: VirtualSink }>) {
   const { t } = useI18n();
+  const volumeCeiling = useVolumeCeiling(channel.name, MAX_VOLUME);
   const setChannelVolume = useMixerStore((state) => state.setChannelVolume);
   const toggleMute = useMixerStore((state) => state.toggleMute);
   const output = useMixerStore((state) => state.channelOutputs[channel.name] ?? null);
@@ -23,8 +26,6 @@ export function ChannelScreen({ channel }: Readonly<{ channel: VirtualSink }>) {
   const failover = useMixerStore((state) => state.channelFailover[channel.name] ?? true);
   const setChannelOutput = useMixerStore((state) => state.setChannelOutput);
   const setChannelFailover = useMixerStore((state) => state.setChannelFailover);
-  const listening = useMixerStore((state) => state.monitors[channel.name] ?? false);
-  const toggleMonitor = useMixerStore((state) => state.toggleMonitor);
   const appStreams = useMixerStore((state) => state.appStreams);
   const seenApps = useMixerStore((state) => state.seenApps);
   const eqConfig =
@@ -50,7 +51,10 @@ export function ChannelScreen({ channel }: Readonly<{ channel: VirtualSink }>) {
         <div className="channel-heading-icon">
           <Ms name={channelIcon(channel)} />
         </div>
-        <h1>{channel.label}</h1>
+        <div className="head-copy">
+          <h1>{channel.label}</h1>
+          <p className="head-sub">{t("channel.subtitle")}</p>
+        </div>
         <div className="screen-head-actions">
           <button
             type="button"
@@ -60,16 +64,6 @@ export function ChannelScreen({ channel }: Readonly<{ channel: VirtualSink }>) {
             <Ms name={channel.muted ? "volume_off" : "volume_up"} />
             {t(channel.muted ? "channel.muted" : "channel.mute")}
           </button>
-          <button
-            type="button"
-            className={"select channel-head-control" + (listening ? " on-mon" : "")}
-            aria-pressed={listening}
-            title={t("channel.listenHint")}
-            onClick={() => void toggleMonitor(channel.name)}
-          >
-            <Ms name="headphones" />
-            {t(listening ? "channel.listening" : "channel.listen")}
-          </button>
           <AudioTestControls kind="channel" sinkName={channel.name} />
         </div>
       </div>
@@ -78,9 +72,7 @@ export function ChannelScreen({ channel }: Readonly<{ channel: VirtualSink }>) {
         <div className="section-label">{t("channel.section")}</div>
         <div className="card channel-controls-card">
           <div className="channel-control-block channel-preset-control">
-            <div>
-              <div className="rtitle">{t("channel.presets")}</div>
-            </div>
+            <div className="control-label">{t("channel.presets")}</div>
             <EqPresetMenu
               sinkName={channel.name}
               config={eqConfig}
@@ -89,21 +81,20 @@ export function ChannelScreen({ channel }: Readonly<{ channel: VirtualSink }>) {
             />
           </div>
           <div className="channel-control-block channel-volume-control">
-            <div>
-              <div className="rtitle">{t("channel.volume")}</div>
+            <div className="control-label-row">
+              <div className="control-label">{t("channel.volume")}</div>
+              <VolumeRangeToggle id={channel.name} compact />
             </div>
             <HSlider
               value={channel.volume_percent}
-              max={MAX_VOLUME}
+              max={volumeCeiling}
               ariaLabel={t("channel.volumeLabel", { channel: channel.label })}
               valueLabel={`${channel.volume_percent}% · ${volToDb(channel.volume_percent)}`}
               onChange={(value) => void setChannelVolume(channel.name, value)}
             />
           </div>
           <div className="channel-control-block">
-            <div>
-              <div className="rtitle">{t("channel.device")}</div>
-            </div>
+            <div className="control-label">{t("channel.device")}</div>
             <OutputSelect
               value={output}
               resolved={resolvedOutput}
@@ -113,14 +104,16 @@ export function ChannelScreen({ channel }: Readonly<{ channel: VirtualSink }>) {
             />
           </div>
           <div className="channel-control-block channel-app-control">
+            <div className="control-label">{t("channel.apps")}</div>
             <div style={{ position: "relative" }}>
               <button
                 type="button"
-                className="select"
+                className="select channel-apps-trigger"
                 title={t("channel.appsHint")}
                 onClick={() => setManagingApps(true)}
               >
-                {t(appCount === 1 ? "channel.appsOne" : "channel.appsMany", { count: appCount })}
+                <span>{t(appCount === 1 ? "channel.appsOne" : "channel.appsMany", { count: appCount })}</span>
+                <Ms name="expand_more" />
               </button>
               <ChannelApps
                 channel={channel}

@@ -5,7 +5,6 @@ import { Ms } from "../Icons";
 import { AppRow } from "./AppRow";
 import { InactiveRow } from "./InactiveRow";
 import { useI18n } from "../../i18n";
-import { HelpInfo } from "../HelpInfo";
 import { applicationGroupKey, groupSeenApps } from "../../lib/appGroups";
 
 /** Apps screen: live apps grouped by channel, previously-seen apps below
@@ -42,9 +41,12 @@ export function AppList() {
 
   return (
     <div className="content">
-      <div className="screen-head">
-        <h1>{t("applications.title")}</h1>
-        <HelpInfo label={t("applications.title")} text={t("applications.description")} className="screen-head-help" />
+      <div className="screen-head screen-head-rich">
+        <span className="head-icon"><Ms name="grid_view" /></span>
+        <div className="head-copy">
+          <h1>{t("applications.title")}</h1>
+          <p className="head-sub">{t("applications.description")}</p>
+        </div>
         <div className="screen-head-actions">
           <span className="tag">
             <Ms name="graphic_eq" />

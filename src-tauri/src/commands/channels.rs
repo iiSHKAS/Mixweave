@@ -61,6 +61,7 @@ fn persistence_error_with_restore(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn restore_channel_runtime(
     state: &AppState,
     channel: &VirtualSink,
@@ -68,11 +69,32 @@ fn restore_channel_runtime(
     failover: bool,
     eq: &crate::audio::types::EqConfig,
     streams: &[u32],
+    fraction: f32,
+    master_muted: bool,
+    stream_fraction: f32,
+    streamer_muted: bool,
 ) -> Result<(), crate::error::SinkError> {
-    state
-        .backend
-        .set_sink_volume(&channel.name, channel.volume_percent)?;
-    state.backend.set_sink_mute(&channel.name, channel.muted)?;
+    crate::commands::routing::push_channel_controls(
+        state.backend.as_ref(),
+        &channel.name,
+        channel.volume_percent,
+        channel.muted,
+        fraction,
+        master_muted,
+    )?;
+    // Renaming recreates the sink (see `set_virtual_sink_label`), which
+    // also recreates its Stream-send insert from scratch - restore its
+    // level too, or a rename would silently reset Stream back to unity.
+    if state.backend_native {
+        crate::commands::routing::push_channel_stream_controls(
+            state.backend.as_ref(),
+            &channel.name,
+            channel.stream_send_volume_percent,
+            channel.stream_send_muted,
+            stream_fraction,
+            streamer_muted,
+        )?;
+    }
     state.backend.set_channel_output(&channel.name, output)?;
     state
         .backend
@@ -259,6 +281,8 @@ pub fn add_channel(
             volume_percent: 100,
             muted: false,
             stream_mix: def.stream_mix,
+            stream_send_volume_percent: 100,
+            stream_send_muted: false,
         });
         let old_names = mixer
             .channels
@@ -270,6 +294,7 @@ pub fn add_channel(
             .map(|channel| channel.name.clone())
             .collect::<Vec<_>>();
         next.buses.sync_master(&new_names);
+        next.buses.sync_streamer_mode(&new_names);
         (
             def,
             previous,
@@ -281,12 +306,33 @@ pub fn add_channel(
         )
     };
 
+    let (fraction, master_muted) = crate::persistence::buses::master_gain(&previous.buses);
+    let (stream_fraction, streamer_muted) =
+        crate::persistence::buses::streamer_gain(&previous.buses);
     if let Err(e) = (|| {
         state
             .backend
             .create_virtual_sink(&def.name, &prefs.decorate(&def.label))?;
-        state.backend.set_sink_volume(&def.name, 100)?;
-        state.backend.set_sink_mute(&def.name, false)?;
+        crate::commands::routing::push_channel_controls(
+            state.backend.as_ref(),
+            &def.name,
+            100,
+            false,
+            fraction,
+            master_muted,
+        )?;
+        // Native-only, like the mix membership below: the pactl fallback
+        // has no Stream-send insert point (see `set_channel_stream_volume`).
+        if state.backend_native {
+            crate::commands::routing::push_channel_stream_controls(
+                state.backend.as_ref(),
+                &def.name,
+                100,
+                false,
+                stream_fraction,
+                streamer_muted,
+            )?;
+        }
         state.backend.set_channel_output(&def.name, None)
     })() {
         // The candidate definition has not reached memory or disk yet.
@@ -546,6 +592,8 @@ pub fn rename_channel(
         .filter(|stream| stream.assigned_sink.as_deref() == Some(sink_name.as_str()))
         .map(|stream| stream.index)
         .collect::<Vec<_>>();
+    let (fraction, master_muted) = crate::persistence::buses::master_gain(&buses);
+    let (stream_fraction, streamer_muted) = crate::persistence::buses::streamer_gain(&buses);
     let decorated_old = prefs.decorate(&old_channel.label);
     let decorated_new = prefs.decorate(&new_label);
     let apply_result = state
@@ -559,6 +607,10 @@ pub fn rename_channel(
                 failover,
                 &eq,
                 &streams,
+                fraction,
+                master_muted,
+                stream_fraction,
+                streamer_muted,
             )
         });
     if let Err(error) = apply_result {
@@ -573,6 +625,10 @@ pub fn rename_channel(
                     failover,
                     &eq,
                     &streams,
+                    fraction,
+                    master_muted,
+                    stream_fraction,
+                    streamer_muted,
                 )
             });
         return Err(match rollback {
@@ -606,6 +662,10 @@ pub fn rename_channel(
                             failover,
                             &eq,
                             &streams,
+                            fraction,
+                            master_muted,
+                            stream_fraction,
+                            streamer_muted,
                         )
                     })
             },

@@ -1,11 +1,8 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-/// Embed the community EQ presets (../presets/eq/*.json) into the binary:
-/// generate `OUT_DIR/eq_presets_generated.rs` with one include_str! per
-/// file. Compile-time embedding means zero packaging changes (the deb/rpm/
-/// AUR/COPR payloads stay identical) and presets can never be missing at
-/// runtime. Dropping a .json into presets/eq/ is picked up automatically.
+/// Embed presets/eq/*.json using generated include_str! calls so presets
+/// are available at runtime without separate resource packaging.
 fn embed_eq_presets() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR");
     let out_dir = std::env::var("OUT_DIR").expect("cargo sets OUT_DIR");

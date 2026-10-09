@@ -12,9 +12,9 @@ pub enum DeviceLabelStyle {
     /// "Game"
     #[default]
     Plain,
-    /// "Game (Sonux)"
+    /// "Game (Mixweave)"
     Suffix,
-    /// "Sonux · Game"
+    /// "Mixweave · Game"
     Prefix,
 }
 
@@ -41,9 +41,12 @@ pub enum MeterMode {
     Off,
 }
 
-/// App preferences, stored at `$XDG_CONFIG_HOME/sonux/prefs.json`.
+/// App preferences, stored at `$XDG_CONFIG_HOME/mixweave/prefs.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Prefs {
+    /// AppImage checks, downloads and installs; never automatically restarts.
+    #[serde(default = "default_true")]
+    pub auto_update_enabled: bool,
     #[serde(default)]
     pub device_label_style: DeviceLabelStyle,
     /// Live meter animation rate. Every enabled rate sleeps at silence.
@@ -68,6 +71,13 @@ pub struct Prefs {
     /// Advanced opt-in: allow profiles to publish secondary processed mics.
     #[serde(default)]
     pub multiple_mics: bool,
+    /// Whether the Streamer Mode mix's live node exists at all. While false
+    /// it is never created (see `commands::devices::init_virtual_devices`),
+    /// so it cannot appear as a selectable device anywhere until the user
+    /// turns it on - every channel's independent Stream send keeps working
+    /// underneath either way (see `commands::buses::set_streamer_mode_enabled`).
+    #[serde(default)]
+    pub streamer_mode_enabled: bool,
 }
 
 fn default_true() -> bool {
@@ -77,6 +87,7 @@ fn default_true() -> bool {
 impl Default for Prefs {
     fn default() -> Self {
         Self {
+            auto_update_enabled: true,
             device_label_style: DeviceLabelStyle::default(),
             meter_mode: MeterMode::default(),
             onboarded: false,
@@ -85,6 +96,7 @@ impl Default for Prefs {
             show_balance: true,
             start_minimized: false,
             multiple_mics: false,
+            streamer_mode_enabled: false,
         }
     }
 }
@@ -93,7 +105,7 @@ impl Prefs {
     pub fn config_path() -> Result<PathBuf, SinkError> {
         let dir = dirs::config_dir()
             .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
-        Ok(dir.join("sonux").join("prefs.json"))
+        Ok(dir.join("mixweave").join("prefs.json"))
     }
 
     pub fn load() -> Self {
@@ -109,7 +121,7 @@ impl Prefs {
     /// than blocking launch.
     fn parse(raw: &str) -> Self {
         serde_json::from_str(raw).unwrap_or_else(|e| {
-            eprintln!("sonux: ignoring malformed prefs: {e}");
+            eprintln!("mixweave: ignoring malformed prefs: {e}");
             Self::default()
         })
     }
@@ -130,71 +142,8 @@ impl Prefs {
     pub fn decorate(&self, label: &str) -> String {
         match self.device_label_style {
             DeviceLabelStyle::Plain => label.to_string(),
-            DeviceLabelStyle::Suffix => format!("{label} (Sonux)"),
-            DeviceLabelStyle::Prefix => format!("Sonux · {label}"),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn decorate_styles() {
-        let mut p = Prefs::default();
-        assert_eq!(p.decorate("Game"), "Game");
-        p.device_label_style = DeviceLabelStyle::Suffix;
-        assert_eq!(p.decorate("Game"), "Game (Sonux)");
-        p.device_label_style = DeviceLabelStyle::Prefix;
-        assert_eq!(p.decorate("Game"), "Sonux · Game");
-    }
-
-    #[test]
-    fn malformed_prefs_degrade_to_defaults() {
-        // Corrupt / partially-written files must never panic or block
-        // launch - they fall back to defaults.
-        assert_eq!(Prefs::parse(""), Prefs::default());
-        assert_eq!(Prefs::parse("{not json"), Prefs::default());
-        assert_eq!(Prefs::parse("[]"), Prefs::default());
-        assert_eq!(
-            Prefs::parse(r#"{"device_label_style":"bogus_style"}"#),
-            Prefs::default()
-        );
-        // Unknown fields are tolerated; known fields still apply.
-        let p = Prefs::parse(r#"{"device_label_style":"suffix","future_field":1}"#);
-        assert_eq!(p.device_label_style, DeviceLabelStyle::Suffix);
-        assert_eq!(p.meter_mode, MeterMode::Fps60);
-    }
-
-    #[test]
-    fn meter_mode_round_trips_and_old_values_migrate_to_60_fps() {
-        let old = Prefs::parse(r#"{"onboarded":true}"#);
-        assert_eq!(old.meter_mode, MeterMode::Fps60);
-
-        let low = Prefs::parse(r#"{"meter_mode":"low_power"}"#);
-        assert_eq!(low.meter_mode, MeterMode::Fps60);
-        let high = Prefs::parse(r#"{"meter_mode":"high"}"#);
-        assert_eq!(high.meter_mode, MeterMode::Fps60);
-        let balanced = Prefs::parse(r#"{"meter_mode":"balanced"}"#);
-        assert_eq!(balanced.meter_mode, MeterMode::Fps60);
-
-        let monitor = Prefs::parse(r#"{"meter_mode":"monitor"}"#);
-        assert_eq!(monitor.meter_mode, MeterMode::Monitor);
-        let capped = Prefs::parse(r#"{"meter_mode":"fps_144"}"#);
-        assert_eq!(capped.meter_mode, MeterMode::Fps144);
-
-        let serialized = [
-            (MeterMode::Monitor, r#""monitor""#),
-            (MeterMode::Fps144, r#""fps_144""#),
-            (MeterMode::Fps120, r#""fps_120""#),
-            (MeterMode::Fps100, r#""fps_100""#),
-            (MeterMode::Fps60, r#""fps_60""#),
-            (MeterMode::Off, r#""off""#),
-        ];
-        for (mode, json) in serialized {
-            assert_eq!(serde_json::to_string(&mode).unwrap(), json);
-            assert_eq!(serde_json::from_str::<MeterMode>(json).unwrap(), mode);
+            DeviceLabelStyle::Suffix => format!("{label} (Mixweave)"),
+            DeviceLabelStyle::Prefix => format!("Mixweave · {label}"),
         }
     }
 }

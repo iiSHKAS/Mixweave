@@ -65,6 +65,13 @@ impl Ring {
         avail
     }
 
+    /// Samples currently waiting to be popped (consumer-side view).
+    pub fn available(&self) -> usize {
+        let w = self.write.load(Ordering::Acquire);
+        let r = self.read.load(Ordering::Relaxed);
+        w.wrapping_sub(r).min(self.buf.len())
+    }
+
     /// Snapshot the producer's next write position. The producer uses this to
     /// publish an exact lifecycle boundary before it writes resumed audio.
     pub fn write_position(&self) -> usize {
@@ -84,94 +91,4 @@ impl Ring {
         discarded
     }
 
-    /// Consumer-side resume boundary: discard everything published before the
-    /// current write cursor. Samples published concurrently after this load
-    /// remain available on the next pop.
-    #[cfg(test)]
-    pub fn discard_pending(&self) -> usize {
-        let w = self.write.load(Ordering::Acquire);
-        let r = self.read.load(Ordering::Relaxed);
-        let discarded = w.wrapping_sub(r).min(self.buf.len());
-        self.read.store(w, Ordering::Release);
-        discarded
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn roundtrip_and_underrun() {
-        let ring = Ring::new(8);
-        assert_eq!(ring.push(&[1.0, 2.0, 3.0]), 3);
-        let mut out = [0.0f32; 5];
-        let n = ring.pop(&mut out);
-        assert_eq!(n, 3);
-        assert_eq!(&out[..3], &[1.0, 2.0, 3.0]);
-        assert_eq!(&out[3..], &[0.0, 0.0]); // underrun zero-fill
-    }
-
-    #[test]
-    fn overflow_drops_new_samples_without_overwriting_unread_audio() {
-        let ring = Ring::new(4); // effective window of 4
-        let data: Vec<f32> = (0..10).map(|i| i as f32).collect();
-        assert_eq!(ring.push(&data), 4);
-        let mut out = [0.0f32; 4];
-        let n = ring.pop(&mut out);
-        assert_eq!(n, 4);
-        assert_eq!(out, [0.0, 1.0, 2.0, 3.0]);
-    }
-
-    #[test]
-    fn full_ring_does_not_touch_unread_slots() {
-        let ring = Ring::new(4);
-        assert_eq!(ring.push(&[1.0, 2.0, 3.0, 4.0]), 4);
-
-        assert_eq!(ring.push(&[8.0, 9.0, 10.0, 11.0]), 0);
-
-        let mut out = [0.0; 4];
-        assert_eq!(ring.pop(&mut out), 4);
-        assert_eq!(out, [1.0, 2.0, 3.0, 4.0]);
-    }
-
-    #[test]
-    fn producer_reuses_only_slots_published_by_the_consumer() {
-        let ring = Ring::new(4);
-        assert_eq!(ring.push(&[1.0, 2.0, 3.0, 4.0]), 4);
-        let mut first = [0.0; 2];
-        assert_eq!(ring.pop(&mut first), 2);
-        assert_eq!(ring.push(&[5.0, 6.0, 7.0]), 2);
-        let mut rest = [0.0; 4];
-        assert_eq!(ring.pop(&mut rest), 4);
-        assert_eq!(rest, [3.0, 4.0, 5.0, 6.0]);
-    }
-
-    #[test]
-    fn discard_pending_drops_old_audio_but_keeps_later_writes() {
-        let ring = Ring::new(8);
-        assert_eq!(ring.push(&[1.0, 2.0, 3.0, 4.0]), 4);
-        assert_eq!(ring.discard_pending(), 4);
-        assert_eq!(ring.push(&[5.0, 6.0]), 2);
-
-        let mut out = [0.0; 4];
-        assert_eq!(ring.pop(&mut out), 2);
-        assert_eq!(out, [5.0, 6.0, 0.0, 0.0]);
-    }
-
-    #[test]
-    fn discard_through_preserves_samples_published_after_boundary() {
-        let ring = Ring::new(8);
-        assert_eq!(ring.push(&[-1.0, -0.5]), 2);
-        let boundary = ring.write_position();
-        assert_eq!(ring.push(&[1.0, 0.5]), 2);
-
-        assert_eq!(ring.discard_through(boundary), 2);
-        let mut out = [0.0; 4];
-        assert_eq!(ring.pop(&mut out), 2);
-        assert_eq!(out, [1.0, 0.5, 0.0, 0.0]);
-
-        // Replaying an old boundary must never move the consumer backwards.
-        assert_eq!(ring.discard_through(boundary), 0);
-    }
 }

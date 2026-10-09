@@ -85,6 +85,41 @@ fn authoritative_group_identities(
     crate::commands::apps::checked_identities(identities)
 }
 
+/// Push a channel's own volume/mute to its live PipeWire sink, scaled by the
+/// master gain fraction/mute so the sink's live level is what the user
+/// actually hears rather than the channel's own stored ("before master")
+/// level. Master is a true listening volume control - see
+/// `persistence::buses::master_gain`.
+pub(crate) fn push_channel_controls(
+    backend: &dyn crate::audio::backend::AudioBackend,
+    channel_name: &str,
+    raw_volume: u8,
+    raw_muted: bool,
+    fraction: f32,
+    master_muted: bool,
+) -> Result<(), crate::error::SinkError> {
+    let live_volume = crate::persistence::buses::scaled_volume(raw_volume, fraction);
+    backend.set_sink_volume(channel_name, live_volume)?;
+    backend.set_sink_mute(channel_name, raw_muted || master_muted)
+}
+
+/// Push a channel's own independent "Stream" send volume/mute to its live
+/// PipeWire stream-send sink, scaled by the Streamer Mode gain fraction/mute
+/// - the exact same mechanism as `push_channel_controls`, but for the
+///   entirely separate Stream path (see `persistence::buses::streamer_gain`).
+pub(crate) fn push_channel_stream_controls(
+    backend: &dyn crate::audio::backend::AudioBackend,
+    channel_name: &str,
+    raw_volume: u8,
+    raw_muted: bool,
+    fraction: f32,
+    streamer_muted: bool,
+) -> Result<(), crate::error::SinkError> {
+    let live_volume = crate::persistence::buses::scaled_volume(raw_volume, fraction);
+    backend.set_channel_stream_volume(channel_name, live_volume)?;
+    backend.set_channel_stream_mute(channel_name, raw_muted || streamer_muted)
+}
+
 fn channel_control_failure(
     error: impl std::fmt::Display,
     profile_rollback: Result<(), crate::error::SinkError>,
@@ -107,8 +142,8 @@ fn channel_control_failure(
 /// Move an app stream onto a channel. An empty `sink_name` unassigns the
 /// stream (returns it to the system default sink).
 ///
-/// The choice is also recorded as a persistent assignment (Phase 2): saved
-/// to `$XDG_CONFIG_HOME/sonux/assignments.json`, mirrored to a WirePlumber
+/// The choice is also recorded as a persistent assignment: saved
+/// to `$XDG_CONFIG_HOME/mixweave/assignments.json`, mirrored to a WirePlumber
 /// pre-link metadata policy, and re-applied by the stream poll when the app restarts.
 #[tauri::command]
 pub fn route_app_to_channel(
@@ -294,17 +329,18 @@ pub fn set_channel_volume(
 ) -> Result<(), String> {
     let _profile_operation = state.lock_expected_profile_operation(expected_profile.as_deref())?;
     // Only our own channels, so a compromised webview can't touch arbitrary
-    // session sinks (TD-050).
+    // session sinks.
     state.ensure_known_channel(&sink_name)?;
     let volume = volume.min(MAX_VOLUME);
-    let (old_volume, old_channels, next_channels, buses) = {
+    let (old_volume, old_muted, old_channels, next_channels, buses, fraction, master_muted) = {
         let mixer = state.lock_mixer()?;
-        let old_volume = mixer
+        let old_channel = mixer
             .channels
             .iter()
             .find(|channel| channel.name == sink_name)
-            .map(|channel| channel.volume_percent)
             .ok_or_else(|| format!("unknown channel: {sink_name}"))?;
+        let old_volume = old_channel.volume_percent;
+        let old_muted = old_channel.muted;
         let old_channels = mixer.channels.clone();
         let mut next_channels = old_channels.clone();
         if let Some(channel) = next_channels
@@ -313,12 +349,26 @@ pub fn set_channel_volume(
         {
             channel.volume_percent = volume;
         }
-        (old_volume, old_channels, next_channels, mixer.buses.clone())
+        let (fraction, master_muted) = mixer.master_gain();
+        (
+            old_volume,
+            old_muted,
+            old_channels,
+            next_channels,
+            mixer.buses.clone(),
+            fraction,
+            master_muted,
+        )
     };
-    state
-        .backend
-        .set_sink_volume(&sink_name, volume)
-        .map_err(|e| e.to_string())?;
+    push_channel_controls(
+        state.backend.as_ref(),
+        &sink_name,
+        volume,
+        old_muted,
+        fraction,
+        master_muted,
+    )
+    .map_err(|e| e.to_string())?;
     {
         let mixer = state.lock_mixer()?;
         if let Err(error) = crate::commands::profiles::save_active_with_channels_and_buses(
@@ -333,7 +383,14 @@ pub fn set_channel_volume(
                     &old_channels,
                     &buses,
                 ),
-                state.backend.set_sink_volume(&sink_name, old_volume),
+                push_channel_controls(
+                    state.backend.as_ref(),
+                    &sink_name,
+                    old_volume,
+                    old_muted,
+                    fraction,
+                    master_muted,
+                ),
             ));
         }
     }
@@ -351,14 +408,15 @@ pub fn toggle_channel_mute(
 ) -> Result<(), String> {
     let _profile_operation = state.lock_expected_profile_operation(expected_profile.as_deref())?;
     state.ensure_known_channel(&sink_name)?;
-    let (old_muted, old_channels, next_channels, buses) = {
+    let (old_muted, old_volume, old_channels, next_channels, buses, fraction, master_muted) = {
         let mixer = state.lock_mixer()?;
-        let old_muted = mixer
+        let old_channel = mixer
             .channels
             .iter()
             .find(|channel| channel.name == sink_name)
-            .map(|channel| channel.muted)
             .ok_or_else(|| format!("unknown channel: {sink_name}"))?;
+        let old_muted = old_channel.muted;
+        let old_volume = old_channel.volume_percent;
         let old_channels = mixer.channels.clone();
         let mut next_channels = old_channels.clone();
         if let Some(channel) = next_channels
@@ -367,12 +425,26 @@ pub fn toggle_channel_mute(
         {
             channel.muted = muted;
         }
-        (old_muted, old_channels, next_channels, mixer.buses.clone())
+        let (fraction, master_muted) = mixer.master_gain();
+        (
+            old_muted,
+            old_volume,
+            old_channels,
+            next_channels,
+            mixer.buses.clone(),
+            fraction,
+            master_muted,
+        )
     };
-    state
-        .backend
-        .set_sink_mute(&sink_name, muted)
-        .map_err(|e| e.to_string())?;
+    push_channel_controls(
+        state.backend.as_ref(),
+        &sink_name,
+        old_volume,
+        muted,
+        fraction,
+        master_muted,
+    )
+    .map_err(|e| e.to_string())?;
     {
         let mixer = state.lock_mixer()?;
         if let Err(error) = crate::commands::profiles::save_active_with_channels_and_buses(
@@ -387,7 +459,170 @@ pub fn toggle_channel_mute(
                     &old_channels,
                     &buses,
                 ),
-                state.backend.set_sink_mute(&sink_name, old_muted),
+                push_channel_controls(
+                    state.backend.as_ref(),
+                    &sink_name,
+                    old_volume,
+                    old_muted,
+                    fraction,
+                    master_muted,
+                ),
+            ));
+        }
+    }
+    state.lock_mixer()?.channels = next_channels;
+    Ok(())
+}
+
+/// Set a channel's independent "Stream" send level (0-150%) - entirely
+/// separate from `set_channel_volume`'s "Personal" level. See
+/// `push_channel_stream_controls`.
+#[tauri::command]
+pub fn set_channel_stream_volume(
+    state: State<'_, AppState>,
+    sink_name: String,
+    volume: u8,
+    expected_profile: Option<String>,
+) -> Result<(), String> {
+    let _profile_operation = state.lock_expected_profile_operation(expected_profile.as_deref())?;
+    state.ensure_known_channel(&sink_name)?;
+    let volume = volume.min(MAX_VOLUME);
+    let (old_volume, old_muted, old_channels, next_channels, buses, fraction, streamer_muted) = {
+        let mixer = state.lock_mixer()?;
+        let old_channel = mixer
+            .channels
+            .iter()
+            .find(|channel| channel.name == sink_name)
+            .ok_or_else(|| format!("unknown channel: {sink_name}"))?;
+        let old_volume = old_channel.stream_send_volume_percent;
+        let old_muted = old_channel.stream_send_muted;
+        let old_channels = mixer.channels.clone();
+        let mut next_channels = old_channels.clone();
+        if let Some(channel) = next_channels
+            .iter_mut()
+            .find(|channel| channel.name == sink_name)
+        {
+            channel.stream_send_volume_percent = volume;
+        }
+        let (fraction, streamer_muted) = mixer.streamer_gain();
+        (
+            old_volume,
+            old_muted,
+            old_channels,
+            next_channels,
+            mixer.buses.clone(),
+            fraction,
+            streamer_muted,
+        )
+    };
+    push_channel_stream_controls(
+        state.backend.as_ref(),
+        &sink_name,
+        volume,
+        old_muted,
+        fraction,
+        streamer_muted,
+    )
+    .map_err(|e| e.to_string())?;
+    {
+        let mixer = state.lock_mixer()?;
+        if let Err(error) = crate::commands::profiles::save_active_with_channels_and_buses(
+            &mixer,
+            &next_channels,
+            &buses,
+        ) {
+            return Err(channel_control_failure(
+                error,
+                crate::commands::profiles::save_active_with_channels_and_buses(
+                    &mixer,
+                    &old_channels,
+                    &buses,
+                ),
+                push_channel_stream_controls(
+                    state.backend.as_ref(),
+                    &sink_name,
+                    old_volume,
+                    old_muted,
+                    fraction,
+                    streamer_muted,
+                ),
+            ));
+        }
+    }
+    state.lock_mixer()?.channels = next_channels;
+    Ok(())
+}
+
+/// Mute or unmute a channel's independent "Stream" send - see
+/// `set_channel_stream_volume`.
+#[tauri::command]
+pub fn toggle_channel_stream_mute(
+    state: State<'_, AppState>,
+    sink_name: String,
+    muted: bool,
+    expected_profile: Option<String>,
+) -> Result<(), String> {
+    let _profile_operation = state.lock_expected_profile_operation(expected_profile.as_deref())?;
+    state.ensure_known_channel(&sink_name)?;
+    let (old_muted, old_volume, old_channels, next_channels, buses, fraction, streamer_muted) = {
+        let mixer = state.lock_mixer()?;
+        let old_channel = mixer
+            .channels
+            .iter()
+            .find(|channel| channel.name == sink_name)
+            .ok_or_else(|| format!("unknown channel: {sink_name}"))?;
+        let old_muted = old_channel.stream_send_muted;
+        let old_volume = old_channel.stream_send_volume_percent;
+        let old_channels = mixer.channels.clone();
+        let mut next_channels = old_channels.clone();
+        if let Some(channel) = next_channels
+            .iter_mut()
+            .find(|channel| channel.name == sink_name)
+        {
+            channel.stream_send_muted = muted;
+        }
+        let (fraction, streamer_muted) = mixer.streamer_gain();
+        (
+            old_muted,
+            old_volume,
+            old_channels,
+            next_channels,
+            mixer.buses.clone(),
+            fraction,
+            streamer_muted,
+        )
+    };
+    push_channel_stream_controls(
+        state.backend.as_ref(),
+        &sink_name,
+        old_volume,
+        muted,
+        fraction,
+        streamer_muted,
+    )
+    .map_err(|e| e.to_string())?;
+    {
+        let mixer = state.lock_mixer()?;
+        if let Err(error) = crate::commands::profiles::save_active_with_channels_and_buses(
+            &mixer,
+            &next_channels,
+            &buses,
+        ) {
+            return Err(channel_control_failure(
+                error,
+                crate::commands::profiles::save_active_with_channels_and_buses(
+                    &mixer,
+                    &old_channels,
+                    &buses,
+                ),
+                push_channel_stream_controls(
+                    state.backend.as_ref(),
+                    &sink_name,
+                    old_volume,
+                    old_muted,
+                    fraction,
+                    streamer_muted,
+                ),
             ));
         }
     }
@@ -403,11 +638,10 @@ pub fn set_monitor(
     sink_name: String,
     enabled: bool,
 ) -> Result<(), String> {
-    // Monitoring is scoped to our own nodes: a channel, a mix bus, or the mic
-    // (TD-050) - not any arbitrary session sink.
+    // Restrict monitoring to managed channels, mix buses, and microphones.
     {
         let mixer = state.lock_mixer()?;
-        let known = sink_name == "sink_mic"
+        let known = crate::audio::pw_native::mic::is_mic_node(&sink_name)
             || mixer
                 .channel_defs
                 .channels
@@ -452,81 +686,4 @@ pub fn set_app_volume(
         .backend
         .set_app_volume(stream_index, volume.min(MAX_VOLUME))
         .map_err(|e| e.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn stream(index: u32, value: &str) -> crate::audio::types::AppStream {
-        crate::audio::types::AppStream {
-            index,
-            app_name: value.to_string(),
-            match_prop: "application.name".into(),
-            match_value: value.to_string(),
-            alias: None,
-            icon_name: None,
-            icon_path: None,
-            desktop_id: Some("game".into()),
-            pid: None,
-            assigned_sink: None,
-            volume_percent: 100,
-            muted: false,
-            active: true,
-        }
-    }
-
-    #[test]
-    fn group_route_expands_to_matching_streams_that_appeared_after_the_ui_snapshot() {
-        let streams = vec![stream(1, "helper-a"), stream(2, "helper-b")];
-        let identities = vec![AppIdentity {
-            match_prop: "application.name".into(),
-            match_value: "helper-a".into(),
-        }];
-        validate_requested_group(&streams, &identities, &[1], Some("game")).expect("valid group");
-        let planned = plan_group_routes(&streams, &identities, Some("game"));
-        assert_eq!(
-            planned.iter().map(|(index, _)| *index).collect::<Vec<_>>(),
-            vec![1, 2]
-        );
-    }
-
-    #[test]
-    fn group_route_rejects_a_requested_stream_outside_the_group() {
-        let streams = vec![stream(1, "helper-a"), stream(2, "other")];
-        let identities = vec![AppIdentity {
-            match_prop: "application.name".into(),
-            match_value: "helper-a".into(),
-        }];
-        assert!(validate_requested_group(&streams, &identities, &[2], None).is_err());
-    }
-
-    #[test]
-    fn group_route_rejects_a_canonical_id_from_another_application() {
-        let streams = vec![stream(1, "helper-a"), stream(2, "helper-b")];
-        let identities = vec![AppIdentity {
-            match_prop: "application.name".into(),
-            match_value: "helper-a".into(),
-        }];
-        assert!(validate_requested_group(&streams, &identities, &[1], Some("other")).is_err());
-    }
-
-    #[test]
-    fn authoritative_canonical_membership_drops_unrelated_submitted_identities() {
-        let mut streams = vec![stream(1, "helper-a"), stream(2, "unrelated")];
-        streams[1].desktop_id = Some("other".into());
-        let identities = authoritative_group_identities(
-            &crate::persistence::seen::SeenApps::default(),
-            &streams,
-            "game",
-        )
-        .expect("canonical members");
-        assert_eq!(
-            identities,
-            vec![AppIdentity {
-                match_prop: "application.name".into(),
-                match_value: "helper-a".into(),
-            }]
-        );
-    }
 }

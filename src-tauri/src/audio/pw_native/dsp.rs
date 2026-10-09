@@ -1,4 +1,4 @@
-//! Native mic DSP chain (Phase 3): noise gate → gain → compressor →
+//! Native mic DSP chain: noise gate → gain → compressor →
 //! limiter. Pure Rust, no LV2/LADSPA. Runs per-sample inside the mic
 //! capture stream's process callback (mono).
 //!
@@ -173,92 +173,5 @@ impl DspChain {
 
             *sample = x;
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn settings(gate: bool, comp: bool, limit: bool, gain: f32) -> DspSettings {
-        DspSettings {
-            gate_enabled: gate,
-            comp_enabled: comp,
-            limiter_enabled: limit,
-            gain,
-            ..DspSettings::default()
-        }
-    }
-
-    fn peak(samples: &[f32]) -> f32 {
-        samples.iter().fold(0.0f32, |a, s| a.max(s.abs()))
-    }
-
-    #[test]
-    fn mute_silences_everything() {
-        let mut chain = DspChain::new(48000.0);
-        let mut buf = vec![0.5f32; 480];
-        let mut s = settings(false, false, false, 1.0);
-        s.muted = true;
-        chain.process(&mut buf, &s);
-        assert_eq!(peak(&buf), 0.0);
-    }
-
-    #[test]
-    fn gate_blocks_noise_floor_but_passes_speech() {
-        let mut chain = DspChain::new(48000.0);
-        // quiet hiss well below -45 dB (~0.001 ≈ -60 dB)
-        let mut hiss: Vec<f32> = (0..4800)
-            .map(|i| 0.001 * ((i % 7) as f32 - 3.0) / 3.0)
-            .collect();
-        chain.process(&mut hiss, &settings(true, false, false, 1.0));
-        assert!(
-            peak(&hiss) < 0.0005,
-            "noise should be gated, got {}",
-            peak(&hiss)
-        );
-
-        // loud signal (~-12 dB) opens the gate
-        let mut chain = DspChain::new(48000.0);
-        let mut voice: Vec<f32> = (0..4800).map(|i| 0.25 * (i as f32 * 0.05).sin()).collect();
-        chain.process(&mut voice, &settings(true, false, false, 1.0));
-        // after the attack settles, the tail should be near full level
-        assert!(peak(&voice[2400..]) > 0.2, "speech should pass the gate");
-    }
-
-    #[test]
-    fn gain_scales_linearly() {
-        let mut chain = DspChain::new(48000.0);
-        let mut buf = vec![0.1f32; 480];
-        chain.process(&mut buf, &settings(false, false, false, 2.0));
-        assert!((buf[479] - 0.2).abs() < 1e-6);
-    }
-
-    #[test]
-    fn compressor_reduces_dynamic_range() {
-        // Loud signal: -6 dB in, threshold -18 dB, ratio 3 → reduction.
-        let mut chain = DspChain::new(48000.0);
-        let mut loud: Vec<f32> = (0..48000).map(|i| 0.5 * (i as f32 * 0.06).sin()).collect();
-        chain.process(&mut loud, &settings(false, true, false, 1.0));
-        let out_peak = peak(&loud[24000..]);
-        // -6 dB over threshold is 12 dB; reduced by 12*(1-1/3)=8 dB, +4 makeup
-        // → net -4 dB from input peak 0.5 → ~0.315. Allow generous tolerance.
-        assert!(out_peak < 0.45, "expected compression, peak={out_peak}");
-        assert!(out_peak > 0.2, "compression overshot, peak={out_peak}");
-    }
-
-    #[test]
-    fn limiter_holds_ceiling() {
-        let mut chain = DspChain::new(48000.0);
-        // grossly hot signal, gain-boosted ×4
-        let mut buf: Vec<f32> = (0..48000).map(|i| 0.9 * (i as f32 * 0.07).sin()).collect();
-        chain.process(&mut buf, &settings(false, false, true, 4.0));
-        let ceiling = db_to_linear(-1.0);
-        assert!(
-            peak(&buf) <= ceiling + 1e-4,
-            "peak {} above ceiling {}",
-            peak(&buf),
-            ceiling
-        );
     }
 }

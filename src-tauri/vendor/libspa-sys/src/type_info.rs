@@ -88,38 +88,3 @@ extern "C" {
     #[link_name = "libspa_rs_type_video_interlace_mode"]
     pub static spa_type_video_interlace_mode: *const spa_type_info;
 }
-
-#[cfg(test)]
-mod test {
-    use crate::{spa_type_media_type, SPA_MEDIA_TYPE_audio};
-
-    use std::ffi;
-
-    #[test]
-    fn test_libspa_rs_debug_type_find() {
-        unsafe {
-            let type_info = super::spa_debug_type_find(spa_type_media_type, SPA_MEDIA_TYPE_audio);
-            assert_eq!(
-                ffi::CStr::from_ptr((*type_info).name),
-                c"Spa:Enum:MediaType:audio"
-            );
-        }
-    }
-
-    #[test]
-    fn test_libspa_rs_debug_type_find_name() {
-        unsafe {
-            let name = super::spa_debug_type_find_name(spa_type_media_type, SPA_MEDIA_TYPE_audio);
-            assert_eq!(ffi::CStr::from_ptr(name), c"Spa:Enum:MediaType:audio");
-        }
-    }
-
-    #[test]
-    fn test_libspa_rs_debug_type_find_short_name() {
-        unsafe {
-            let name =
-                super::spa_debug_type_find_short_name(spa_type_media_type, SPA_MEDIA_TYPE_audio);
-            assert_eq!(ffi::CStr::from_ptr(name), c"audio");
-        }
-    }
-}

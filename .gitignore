@@ -28,3 +28,8 @@ third_party/spatial/runtime/*
 # Internal audit findings - local only, never committed
 technical_debt.md
 PROJECT_STATUS.md
+
+# Generated signed release payloads (publish as release assets, not git files)
+update-build.json
+قيتهب ابديت/release-files/
+قيتهب ابديت/__pycache__/

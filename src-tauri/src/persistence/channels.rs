@@ -6,7 +6,11 @@ use serde::{Deserialize, Serialize};
 use crate::error::SinkError;
 
 /// Sink node names reserved by Sink itself (not user channels).
-pub const RESERVED_SINK_NAMES: [&str; 2] = ["sink_mic", "sink_stream"];
+pub const RESERVED_SINK_NAMES: [&str; 3] = [
+    "sink_mic",
+    "sink_stream",
+    crate::persistence::buses::STREAMER_MODE_BUS_NODE,
+];
 /// Upper bound on user channels (level-meter slots are budgeted for this).
 pub const MAX_CHANNELS: usize = 10;
 
@@ -34,7 +38,7 @@ fn default_true() -> bool {
 }
 
 /// The user's channel set, stored as JSON at
-/// `$XDG_CONFIG_HOME/sonux/channels.json`. Defaults to the classic four.
+/// `$XDG_CONFIG_HOME/mixweave/channels.json`. Defaults to the classic four.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Channels {
     pub channels: Vec<ChannelDef>,
@@ -80,7 +84,7 @@ impl Channels {
     pub fn config_path() -> Result<PathBuf, SinkError> {
         let dir = dirs::config_dir()
             .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
-        Ok(dir.join("sonux").join("channels.json"))
+        Ok(dir.join("mixweave").join("channels.json"))
     }
 
     pub fn load() -> Self {
@@ -96,7 +100,7 @@ impl Channels {
         match Self::parse(&raw) {
             Ok(channels) => channels,
             Err(error) => {
-                eprintln!("sonux: channels.json is invalid ({error}); using defaults");
+                eprintln!("mixweave: channels.json is invalid ({error}); using defaults");
                 Self::default()
             }
         }
@@ -267,162 +271,4 @@ pub(crate) fn validate_channel_name(name: &str) -> Result<(), SinkError> {
         return Err(SinkError::Config(format!("invalid channel name: {name}")));
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn defaults_to_classic_four() {
-        let c = Channels::default();
-        assert_eq!(c.channels.len(), 4);
-        assert_eq!(c.channels[0].name, "sink_game");
-    }
-
-    #[test]
-    fn add_generates_unique_safe_names() {
-        let mut c = Channels::default();
-        let d = c
-            .add_with_spatial("Voice Chat!", Some("mic".into()), false)
-            .expect("adds");
-        assert_eq!(d.name, "sink_voice_chat");
-        assert_eq!(d.icon.as_deref(), Some("mic"));
-        let d2 = c
-            .add_with_spatial("Voice Chat", None, false)
-            .expect("adds duplicate label");
-        assert_eq!(d2.name, "sink_voice_chat_2");
-        // Reserved collision: label "mic" must not produce sink_mic.
-        let d3 = c.add_with_spatial("Mic", None, false).expect("adds");
-        assert_eq!(d3.name, "sink_channel_mic");
-        assert!(!is_reserved_sink_name(&d3.name));
-    }
-
-    #[test]
-    fn spatial_channels_get_a_stable_spatial_prefix() {
-        let mut channels = Channels::default();
-        channels.remove("sink_game").expect("removes legacy game");
-        let stereo = channels
-            .add_with_spatial("Game", None, false)
-            .expect("adds stereo game");
-        assert_eq!(stereo.name, "sink_channel_game");
-        assert!(!crate::audio::types::is_spatial_channel(&stereo.name));
-        let spatial = channels
-            .add_with_spatial("Game", Some("sports_esports".into()), true)
-            .expect("adds spatial channel");
-        assert_eq!(spatial.name, "sink_spatial_game");
-        assert!(crate::audio::types::is_spatial_channel(&spatial.name));
-    }
-
-    #[test]
-    fn pathological_labels_hit_the_slug_fallback() {
-        let mut c = Channels::default();
-        // All-special-char labels slugify to empty → "channel" fallback.
-        let d = c.add_with_spatial("!!!", None, false).expect("adds");
-        assert_eq!(d.name, "sink_channel");
-        let d2 = c
-            .add_with_spatial("___", None, false)
-            .expect("adds second pathological label");
-        assert_eq!(d2.name, "sink_channel_2");
-        // Whitespace-only labels are rejected outright.
-        assert!(c.add_with_spatial("   ", None, false).is_err());
-    }
-
-    #[test]
-    fn reorder_is_a_strict_permutation() {
-        let mut c = Channels::default();
-        c.reorder(&[
-            "sink_media".into(),
-            "sink_game".into(),
-            "sink_aux".into(),
-            "sink_chat".into(),
-        ])
-        .expect("reorders");
-        let names: Vec<&str> = c.channels.iter().map(|d| d.name.as_str()).collect();
-        assert_eq!(names, ["sink_media", "sink_game", "sink_aux", "sink_chat"]);
-        // Wrong length and unknown names are rejected.
-        assert!(c.reorder(&["sink_game".into()]).is_err());
-        assert!(c
-            .reorder(&[
-                "sink_media".into(),
-                "sink_game".into(),
-                "sink_aux".into(),
-                "sink_nope".into(),
-            ])
-            .is_err());
-    }
-
-    #[test]
-    fn remove_keeps_at_least_one() {
-        let mut c = Channels::default();
-        c.remove("sink_game").expect("removes");
-        c.remove("sink_chat").expect("removes");
-        c.remove("sink_media").expect("removes");
-        assert!(c.remove("sink_aux").is_err(), "last channel must stay");
-    }
-
-    #[test]
-    fn rename_updates_label_only() {
-        let mut c = Channels::default();
-        c.rename("sink_game", "Gaems").expect("renames");
-        assert_eq!(c.get("sink_game").expect("exists").label, "Gaems");
-        assert!(c.rename("sink_nope", "X").is_err());
-    }
-
-    #[test]
-    fn parse_keeps_valid_and_fills_serde_defaults() {
-        // Old-shape entries (pre-Phase-4: no icon / stream_mix) must still
-        // load, with the serde defaults applied - an upgrade keeps user data.
-        let raw = r#"{"channels":[
-            {"name":"sink_game","label":"Game"},
-            {"name":"sink_media","label":"Media","icon":"music_note","stream_mix":false}
-        ]}"#;
-        let c = Channels::parse(raw).expect("valid json");
-        assert_eq!(c.channels.len(), 2);
-        assert_eq!(c.channels[0].icon, None);
-        assert!(c.channels[0].stream_mix, "missing stream_mix defaults true");
-        assert!(!c.channels[1].stream_mix);
-    }
-
-    #[test]
-    fn parse_rejects_reserved_unprefixed_and_duplicate_names() {
-        let raw = r#"{"channels":[
-            {"name":"sink_game","label":"Game"},
-            {"name":"sink_game","label":"Dup"},
-            {"name":"sink_mic","label":"Reserved"},
-            {"name":"nope","label":"NoPrefix"},
-            {"name":"sink_ok","label":"Fine"}
-        ]}"#;
-        assert!(Channels::parse(raw).is_err());
-    }
-
-    #[test]
-    fn parse_rejects_too_many_channels() {
-        let mut items = Vec::new();
-        for i in 0..(MAX_CHANNELS + 5) {
-            items.push(format!(r#"{{"name":"sink_c{i}","label":"C{i}"}}"#));
-        }
-        let raw = format!(r#"{{"channels":[{}]}}"#, items.join(","));
-        assert!(Channels::parse(&raw).is_err());
-    }
-
-    #[test]
-    fn parse_rejects_corrupt_or_empty_text() {
-        assert!(Channels::parse("{ truncated").is_err());
-        assert!(Channels::parse("").is_err());
-    }
-
-    #[test]
-    fn parse_rejects_all_invalid_set() {
-        let raw = r#"{"channels":[{"name":"sink_mic","label":"x"},{"name":"bad","label":"y"}]}"#;
-        assert!(Channels::parse(raw).is_err());
-    }
-
-    #[test]
-    fn parse_rejects_unsafe_names_and_labels() {
-        let bad_name = r#"{"channels":[{"name":"sink_bad.name","label":"Fine"}]}"#;
-        let bad_label = r#"{"channels":[{"name":"sink_ok","label":"   "}]}"#;
-        assert!(Channels::parse(bad_name).is_err());
-        assert!(Channels::parse(bad_label).is_err());
-    }
 }

@@ -60,7 +60,7 @@ pub(crate) fn wait_for_restart_parent() {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(25));
             }
-            eprintln!("sonux: restart parent {pid} did not exit within 5 seconds; continuing");
+            eprintln!("mixweave: restart parent {pid} did not exit within 5 seconds; continuing");
             return;
         }
     }
@@ -94,14 +94,69 @@ fn normalize_restart_executable(executable: PathBuf) -> PathBuf {
     executable
 }
 
+// Relaunch the outer AppImage with a fresh runtime environment, not paths
+// into the previous image's FUSE mount. Keep session/driver overrides.
+fn clean_appimage_environment(command: &mut Command) {
+    if std::env::var_os("APPIMAGE").is_none() {
+        return;
+    }
+    for name in [
+        "APPIMAGE",
+        "APPDIR",
+        "ARGV0",
+        "OWD",
+        "LD_LIBRARY_PATH",
+        "GIO_MODULE_DIR",
+        "GDK_PIXBUF_MODULE_FILE",
+        "GDK_PIXBUF_MODULEDIR",
+        "GTK_PATH",
+        "GTK_EXE_PREFIX",
+        "GTK_DATA_PREFIX",
+    ] {
+        command.env_remove(name);
+    }
+    if let Some(appdir) = std::env::var_os("APPDIR") {
+        for name in ["PATH", "XDG_DATA_DIRS"] {
+            if let Some(value) = std::env::var_os(name) {
+                let entries: Vec<_> = std::env::split_paths(&value)
+                    .filter(|path| !path.starts_with(&appdir))
+                    .collect();
+                if let Ok(value) = std::env::join_paths(entries) {
+                    command.env(name, value);
+                }
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn spawn_systemd_replacement(executable: &std::path::Path) -> Result<(), String> {
     // Plasma launches desktop applications in transient systemd scopes. A
     // normal child remains in that cgroup and is killed as soon as the old
     // application exits, even after creating a new Unix process group. Put
     // the replacement in its own user service so it survives that cleanup.
-    let unit = format!("sonux-restart-{}", std::process::id());
-    let output = Command::new("systemd-run")
+    let unit = format!("mixweave-restart-{}", std::process::id());
+    let mut command = Command::new("systemd-run");
+    clean_appimage_environment(&mut command);
+    // User managers may not have imported the current Wayland/X11 session.
+    for name in [
+        "DISPLAY",
+        "WAYLAND_DISPLAY",
+        "XAUTHORITY",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "XDG_SESSION_TYPE",
+        "XDG_CURRENT_DESKTOP",
+        "MIXWEAVE_GDK_BACKEND",
+        "WEBKIT_DISABLE_DMABUF_RENDERER",
+    ] {
+        if let Some(value) = std::env::var_os(name) {
+            let mut argument = OsString::from(format!("--setenv={name}="));
+            argument.push(value);
+            command.arg(argument);
+        }
+    }
+    let output = command
         .args([
             "--user",
             "--quiet",
@@ -110,6 +165,7 @@ fn spawn_systemd_replacement(executable: &std::path::Path) -> Result<(), String>
             "--unit",
         ])
         .arg(unit)
+        .arg("--")
         .arg(executable)
         .args(current_args_without_restart_marker())
         .arg(RESTART_PARENT_ARG)
@@ -118,7 +174,7 @@ fn spawn_systemd_replacement(executable: &std::path::Path) -> Result<(), String>
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
-        .map_err(|error| format!("Could not ask systemd to restart Sonux: {error}"))?;
+        .map_err(|error| format!("Could not ask systemd to restart Mixweave: {error}"))?;
 
     if output.status.success() {
         Ok(())
@@ -134,6 +190,7 @@ fn spawn_systemd_replacement(executable: &std::path::Path) -> Result<(), String>
 
 fn spawn_direct_replacement(executable: &std::path::Path) -> Result<(), String> {
     let mut command = Command::new(executable);
+    clean_appimage_environment(&mut command);
     command
         .args(current_args_without_restart_marker())
         .arg(RESTART_PARENT_ARG)
@@ -151,45 +208,26 @@ fn spawn_direct_replacement(executable: &std::path::Path) -> Result<(), String> 
     command
         .spawn()
         .map(|_| ())
-        .map_err(|error| format!("Could not launch the replacement Sonux process: {error}"))
+        .map_err(|error| format!("Could not launch the replacement Mixweave process: {error}"))
 }
 
 fn spawn_detached_replacement() -> Result<(), String> {
     let executable = normalize_restart_executable(
-        std::env::current_exe()
-            .map_err(|error| format!("Could not locate the Sonux executable: {error}"))?,
+        crate::launch_path::launch_path()
+            .map_err(|error| format!("Could not locate the Mixweave executable: {error}"))?,
     );
 
     #[cfg(target_os = "linux")]
     match spawn_systemd_replacement(&executable) {
         Ok(()) => return Ok(()),
         Err(error) => {
-            eprintln!("sonux: systemd restart unavailable ({error}); using direct launch")
+            eprintln!("mixweave: systemd restart unavailable ({error}); using direct launch")
         }
     }
 
     spawn_direct_replacement(&executable)
 }
 
-#[cfg(test)]
-mod restart_tests {
-    use super::normalize_restart_executable;
-    use std::path::PathBuf;
-
-    #[test]
-    fn strips_linux_deleted_suffix_from_rebuilt_executable() {
-        assert_eq!(
-            normalize_restart_executable(PathBuf::from("target/release/sonux (deleted)",)),
-            PathBuf::from("target/release/sonux"),
-        );
-    }
-
-    #[test]
-    fn keeps_normal_executable_path_unchanged() {
-        let path = PathBuf::from("target/release/sonux");
-        assert_eq!(normalize_restart_executable(path.clone()), path);
-    }
-}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct BackendInfo {
@@ -205,8 +243,10 @@ pub fn get_backend_info(state: State<'_, AppState>) -> BackendInfo {
 }
 
 #[tauri::command]
-pub fn get_autostart() -> bool {
-    autostart::is_enabled()
+pub async fn get_autostart() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(autostart::is_enabled)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -267,8 +307,8 @@ pub async fn choose_backup_for_restore(
     let selected = app
         .dialog()
         .file()
-        .set_title("Restore Sonux backup")
-        .add_filter("Sonux backup", &["sonux-backup"])
+        .set_title("Restore Mixweave backup")
+        .add_filter("Mixweave backup", &["mixweave-backup", "sonux-backup"])
         .blocking_pick_file();
     let Some(selected) = selected else {
         return Ok(None);
@@ -279,7 +319,7 @@ pub async fn choose_backup_for_restore(
     let display_name = path
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("Sonux backup")
+        .unwrap_or("Mixweave backup")
         .to_string();
     state.set_backup_restore_grant(path)?;
     Ok(Some(display_name))
@@ -314,7 +354,7 @@ pub fn restore_backup(
     let recovery_backup = recovery
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("Sonux Automatic Recovery Backup")
+        .unwrap_or("Mixweave Automatic Recovery Backup")
         .to_string();
     let warnings = crate::persistence::backup::restore_with(&selected, || {
         let mut warnings = Vec::new();
@@ -344,7 +384,7 @@ pub fn restore_backup(
         recovery_backup: recovery_backup.clone(),
         warning: (!warnings.is_empty()).then(|| {
             format!(
-                "The configuration was restored, but Sonux was not restarted. {} Your previous setup remains available as \"{recovery_backup}\".",
+                "The configuration was restored, but Mixweave was not restarted. {} Your previous setup remains available as \"{recovery_backup}\".",
                 warnings.join(" ")
             )
         }),
@@ -353,14 +393,19 @@ pub fn restore_backup(
 
 /// Enable/disable the systemd user unit for autostart on login.
 #[tauri::command]
-pub fn set_autostart(enabled: bool) -> Result<bool, String> {
-    let result = if enabled {
-        autostart::enable()
-    } else {
-        autostart::disable()
-    };
-    result.map_err(|e| e.to_string())?;
-    Ok(autostart::is_enabled())
+pub async fn set_autostart(enabled: bool) -> Result<bool, String> {
+    // systemctl waits must not block GTK's event loop and switch animation.
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = if enabled {
+            autostart::enable()
+        } else {
+            autostart::disable()
+        };
+        result.map_err(|e| e.to_string())?;
+        Ok(autostart::is_enabled())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -405,7 +450,15 @@ pub fn set_meter_mode(state: State<'_, AppState>, mode: MeterMode) -> Result<(),
 /// the systemd unit when autostart is already enabled so the flag tracks
 /// the preference.
 #[tauri::command]
-pub fn set_start_minimized(state: State<'_, AppState>, minimized: bool) -> Result<(), String> {
+pub async fn set_start_minimized(app: tauri::AppHandle, minimized: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        save_start_minimized(app.state::<AppState>(), minimized)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn save_start_minimized(state: State<'_, AppState>, minimized: bool) -> Result<(), String> {
     let (previous, prefs) = {
         let mixer = state.lock_mixer()?;
         let previous = mixer.prefs.clone();
@@ -540,7 +593,7 @@ pub fn reset_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<()
     let _profile_operation = state.lock_profile_operation()?;
     // Best-effort teardown - the relaunch recreates everything anyway.
     for err in state.teardown_virtual_sinks() {
-        eprintln!("sonux: reset teardown: {err}");
+        eprintln!("mixweave: reset teardown: {err}");
     }
     let mut config_quiescence = crate::persistence::quiesce_config_writes()
         .map_err(|error| format!("Could not stop configuration writers for reset: {error}"))?;
@@ -555,6 +608,9 @@ pub fn reset_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<()
 /// them from the persisted mixer configuration.
 #[tauri::command]
 pub fn restart_app(app: tauri::AppHandle) -> Result<(), String> {
+    let _update = crate::updates::INSTALL_LOCK
+        .lock()
+        .map_err(|_| "Update installation lock poisoned".to_string())?;
     spawn_detached_replacement()?;
     // The replacement waits for this PID, so tear down only after it has been
     // queued successfully. Clearing route metadata is essential: publishing
@@ -562,7 +618,7 @@ pub fn restart_app(app: tauri::AppHandle) -> Result<(), String> {
     // produce the WirePlumber acknowledgement that guards pre-link routing.
     let state = app.state::<AppState>();
     for error in state.teardown_virtual_sinks() {
-        eprintln!("sonux: restart teardown: {error}");
+        eprintln!("mixweave: restart teardown: {error}");
     }
     app.exit(0);
     Ok(())

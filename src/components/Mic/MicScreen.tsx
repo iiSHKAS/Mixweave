@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMixerStore } from "../../store/mixer";
 import { MAX_MIC_GAIN, MIC_LEVEL_KEY, MIC_DSP_DEFAULTS } from "../../types";
+import { useVolumeCeiling } from "../../store/volumeRange";
+import { VolumeRangeToggle } from "../VolumeRangeToggle";
+import { ProcessingHead } from "../ProcessingHead";
 import { DspSlider } from "./DspSlider";
 import { HSlider } from "../AppList/HSlider";
 import { Ms } from "../Icons";
@@ -32,6 +35,7 @@ export function MicScreen() {
     ?? micConfigs.find((mic) => mic.node_name === MIC_LEVEL_KEY)
     ?? null;
   const micNode = micConfig?.node_name ?? MIC_LEVEL_KEY;
+  const gainCeiling = useVolumeCeiling(micNode, MAX_MIC_GAIN);
   const updateMic = (patch: Partial<NonNullable<typeof micConfig>>) => setMicChannelConfig(micNode, patch);
   const listening = useMixerStore((s) => s.monitors[micNode] ?? false);
   const toggleMonitor = useMixerStore((s) => s.toggleMonitor);
@@ -66,7 +70,10 @@ export function MicScreen() {
         <div className="channel-heading-icon">
           <Ms name="mic" />
         </div>
-        <h1>{t("microphone.title")}</h1>
+        <div className="head-copy">
+          <h1>{t("microphone.title")}</h1>
+          <p className="head-sub">{t("microphone.subtitle")}</p>
+        </div>
         {multipleMics && (
           <div className="mic-channel-picker">
             <div style={{ position: "relative" }}>
@@ -145,31 +152,28 @@ export function MicScreen() {
             <div className="section-label">{t("microphone.input.section")}</div>
             <div className="card channel-controls-card mic-controls-card">
               <div className="channel-control-block channel-preset-control">
-                <div>
-                  <div className="rtitle">{t("microphone.preset")}</div>
-                </div>
+                <div className="control-label">{t("microphone.preset")}</div>
                 <MicPresetMenu
                   config={micConfig}
                   onApply={(patch) => void updateMic(patch)}
                 />
               </div>
               <div className="channel-control-block mic-summary-gain-control">
-                <div>
-                  <div className="rtitle">{t("microphone.gain")}</div>
+                <div className="control-label-row">
+                  <div className="control-label">{t("microphone.gain")}</div>
+                  <VolumeRangeToggle id={micNode} compact />
                 </div>
                 <div className="mic-summary-gain">
                   <HSlider
                     value={micConfig.gain_percent}
-                    max={MAX_MIC_GAIN}
+                    max={gainCeiling}
                     ariaLabel={t("microphone.gainLabel", { microphone: micConfig.output_label })}
                     onChange={(v) => void updateMic({ gain_percent: v })}
                   />
                 </div>
               </div>
               <div className="channel-control-block mic-input-control">
-                <div>
-                  <div className="rtitle">{t("microphone.device")}</div>
-                </div>
+                <div className="control-label">{t("microphone.device")}</div>
                 <div className="mic-input-picker">
                   <button type="button" className="select mic-device-select" onClick={() => setDeviceOpen((o) => !o)}>
                     <Ms name="settings_voice" />
@@ -209,9 +213,7 @@ export function MicScreen() {
                 </div>
               </div>
               <div className="channel-control-block mic-name-control">
-                <div>
-                  <div className="rtitle">{t("microphone.name")}</div>
-                </div>
+                <div className="control-label">{t("microphone.name")}</div>
                 <input
                   className="menu-input"
                   value={micConfig.output_label}
@@ -230,23 +232,47 @@ export function MicScreen() {
             </div>
 
             <div className="section-label">{t("microphone.processing.section")}</div>
+            <div className="mic-clean-grid">
+              <div className="card mic-processing-card">
+                <ProcessingHead
+                  icon="noise_aware"
+                  title={t("microphone.denoise.title")}
+                  info={<ProcessingInfo label={t("microphone.denoise.title")} text={t("microphone.denoise.info")} />}
+                  on={micConfig.denoise_enabled}
+                  onToggle={() => void updateMic({ denoise_enabled: !micConfig.denoise_enabled })}
+                />
+                <DspSlider
+                  label={t("microphone.denoise.strength")}
+                  min={0}
+                  max={100}
+                  step={5}
+                  unit="%"
+                  value={micConfig.denoise_strength_percent}
+                  defaultValue={MIC_DSP_DEFAULTS.denoise_strength_percent}
+                  disabled={!micConfig.denoise_enabled}
+                  onChange={(v) => void updateMic({ denoise_strength_percent: v })}
+                />
+              </div>
+              <div className="card mic-processing-card">
+                <ProcessingHead
+                  icon="speaker"
+                  title={t("microphone.echo.title")}
+                  info={<ProcessingInfo label={t("microphone.echo.title")} text={t("microphone.echo.info")} />}
+                  on={micConfig.echo_cancel_enabled}
+                  onToggle={() => void updateMic({ echo_cancel_enabled: !micConfig.echo_cancel_enabled })}
+                />
+                <div className="rsub">{t("microphone.echo.hint")}</div>
+              </div>
+            </div>
             <div className="mic-processing-grid">
               <div className="card mic-processing-card">
-                <div className="processing-card-head">
-                  <div className="processing-toggle-title">
-                    <Toggle
-                      on={micConfig.gate_enabled}
-                      onClick={() => void updateMic({ gate_enabled: !micConfig.gate_enabled })}
-                    />
-                    <div className="rtitle">{t("processing.noiseGate")}</div>
-                  </div>
-                  <div className="processing-card-head-actions">
-                    <ProcessingInfo
-                      label={t("processing.noiseGate")}
-                      text={t("microphone.gate.info")}
-                    />
-                  </div>
-                </div>
+                <ProcessingHead
+                  icon="noise_control_off"
+                  title={t("processing.noiseGate")}
+                  info={<ProcessingInfo label={t("processing.noiseGate")} text={t("microphone.gate.info")} />}
+                  on={micConfig.gate_enabled}
+                  onToggle={() => void updateMic({ gate_enabled: !micConfig.gate_enabled })}
+                />
                 <DspSlider
                   label={t("processing.threshold")}
                   min={-80}
@@ -261,21 +287,13 @@ export function MicScreen() {
               </div>
 
               <div className="card mic-processing-card">
-                <div className="processing-card-head">
-                  <div className="processing-toggle-title">
-                    <Toggle
-                      on={micConfig.comp_enabled}
-                      onClick={() => void updateMic({ comp_enabled: !micConfig.comp_enabled })}
-                    />
-                    <div className="rtitle">{t("processing.compressor")}</div>
-                  </div>
-                  <div className="processing-card-head-actions">
-                    <ProcessingInfo
-                      label={t("processing.compressor")}
-                      text={t("microphone.compressor.info")}
-                    />
-                  </div>
-                </div>
+                <ProcessingHead
+                  icon="compress"
+                  title={t("processing.compressor")}
+                  info={<ProcessingInfo label={t("processing.compressor")} text={t("microphone.compressor.info")} />}
+                  on={micConfig.comp_enabled}
+                  onToggle={() => void updateMic({ comp_enabled: !micConfig.comp_enabled })}
+                />
                 <DspSlider
                   label={t("processing.threshold")}
                   min={-60}
@@ -301,21 +319,13 @@ export function MicScreen() {
               </div>
 
               <div className="card mic-processing-card">
-                <div className="processing-card-head">
-                  <div className="processing-toggle-title">
-                    <Toggle
-                      on={micConfig.limiter_enabled}
-                      onClick={() => void updateMic({ limiter_enabled: !micConfig.limiter_enabled })}
-                    />
-                    <div className="rtitle">{t("processing.limiter")}</div>
-                  </div>
-                  <div className="processing-card-head-actions">
-                    <ProcessingInfo
-                      label={t("processing.limiter")}
-                      text={t("microphone.limiter.info")}
-                    />
-                  </div>
-                </div>
+                <ProcessingHead
+                  icon="vertical_align_top"
+                  title={t("processing.limiter")}
+                  info={<ProcessingInfo label={t("processing.limiter")} text={t("microphone.limiter.info")} />}
+                  on={micConfig.limiter_enabled}
+                  onToggle={() => void updateMic({ limiter_enabled: !micConfig.limiter_enabled })}
+                />
                 <DspSlider
                   label={t("processing.ceiling")}
                   min={-12}

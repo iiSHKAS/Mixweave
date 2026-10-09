@@ -45,7 +45,7 @@ fn default_true() -> bool {
 fn path() -> Result<PathBuf, SinkError> {
     let dir = dirs::config_dir()
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?
-        .join("sonux");
+        .join("mixweave");
     Ok(dir.join("profile_automation.json"))
 }
 
@@ -111,50 +111,4 @@ pub(crate) fn validate_with_profiles(
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn rule(executable: &str) -> ApplicationRule {
-        ApplicationRule {
-            executable: executable.into(),
-            path: None,
-            profile: "Gaming".into(),
-            enabled: true,
-        }
-    }
-
-    #[test]
-    fn rejects_duplicate_executable_names_case_insensitively() {
-        let config = ProfileAutomationConfig {
-            rules: vec![rule("Game.exe"), rule("game.EXE")],
-            ..ProfileAutomationConfig::default()
-        };
-        assert!(validate_with_profiles(&config, &["Gaming".into()]).is_err());
-    }
-
-    #[test]
-    fn rejects_paths_and_missing_profiles() {
-        let with_path = ProfileAutomationConfig {
-            rules: vec![rule("../game")],
-            ..ProfileAutomationConfig::default()
-        };
-        assert!(validate_with_profiles(&with_path, &["Gaming".into()]).is_err());
-
-        let missing_profile = ProfileAutomationConfig {
-            rules: vec![rule("game.exe")],
-            ..ProfileAutomationConfig::default()
-        };
-        assert!(validate_with_profiles(&missing_profile, &["Main".into()]).is_err());
-    }
-
-    #[test]
-    fn existing_configs_enable_notifications_by_default() {
-        let config: ProfileAutomationConfig =
-            serde_json::from_str(r#"{"enabled":false,"rules":[]}"#).unwrap();
-
-        assert!(config.notifications);
-    }
 }

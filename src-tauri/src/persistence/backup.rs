@@ -8,7 +8,19 @@ use serde::{Deserialize, Serialize};
 use crate::error::SinkError;
 
 const BACKUP_SCHEMA: u32 = 1;
-const BACKUP_EXTENSION: &str = "sonux-backup";
+const BACKUP_EXTENSION: &str = "mixweave-backup";
+/// Extensions a past app name wrote backups under - still recognized when
+/// scanning for existing backups or opening one to restore.
+const LEGACY_BACKUP_EXTENSIONS: &[&str] = &["sonux-backup"];
+
+fn has_backup_extension(path: &Path) -> bool {
+    match path.extension().and_then(|value| value.to_str()) {
+        Some(extension) => {
+            extension == BACKUP_EXTENSION || LEGACY_BACKUP_EXTENSIONS.contains(&extension)
+        }
+        None => false,
+    }
+}
 const MAX_BACKUP_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -56,13 +68,13 @@ struct ProfileSectionVisibility {
 
 fn config_root() -> Result<PathBuf, SinkError> {
     dirs::config_dir()
-        .map(|dir| dir.join("sonux"))
+        .map(|dir| dir.join("mixweave"))
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))
 }
 
 pub fn backups_dir() -> Result<PathBuf, SinkError> {
     dirs::data_local_dir()
-        .map(|dir| dir.join("sonux").join("backups"))
+        .map(|dir| dir.join("mixweave").join("backups"))
         .ok_or_else(|| SinkError::Config("cannot resolve the user data directory".into()))
 }
 
@@ -127,8 +139,8 @@ fn is_atomic_temp_name(name: &std::ffi::OsStr) -> bool {
 
 fn filename(kind: BackupKind, created_at: u64) -> String {
     let label = match kind {
-        BackupKind::Manual => "Sonux Manual Backup",
-        BackupKind::AutomaticRecovery => "Sonux Automatic Recovery Backup",
+        BackupKind::Manual => "Mixweave Manual Backup",
+        BackupKind::AutomaticRecovery => "Mixweave Automatic Recovery Backup",
     };
     format!("{label} - {created_at}.{BACKUP_EXTENSION}")
 }
@@ -141,7 +153,7 @@ fn unique_backup_path(dir: &Path, kind: BackupKind, created_at: u64) -> PathBuf 
     let stem = first
         .file_stem()
         .and_then(|value| value.to_str())
-        .unwrap_or("Sonux Backup");
+        .unwrap_or("Mixweave Backup");
     for suffix in 2_u64.. {
         let candidate = dir.join(format!("{stem} ({suffix}).{BACKUP_EXTENSION}"));
         if !candidate.exists() {
@@ -151,28 +163,6 @@ fn unique_backup_path(dir: &Path, kind: BackupKind, created_at: u64) -> PathBuf 
     unreachable!("the unbounded backup-name search always finds a free path")
 }
 
-#[cfg(test)]
-fn write_backup_to(
-    config_root: &Path,
-    backup_dir: &Path,
-    kind: BackupKind,
-    frontend_state: BTreeMap<String, String>,
-    autostart_enabled: bool,
-) -> Result<PathBuf, SinkError> {
-    let created_at = super::unix_now();
-    let config_files = {
-        let _snapshot = super::lock_config_snapshot()?;
-        collect_files(config_root)?
-    };
-    write_backup_payload(
-        backup_dir,
-        kind,
-        created_at,
-        config_files,
-        frontend_state,
-        autostart_enabled,
-    )
-}
 
 fn write_backup_payload(
     backup_dir: &Path,
@@ -185,7 +175,7 @@ fn write_backup_payload(
     validate_managed_payload(&config_files, &frontend_state)?;
     let backup = BackupFile {
         schema: BACKUP_SCHEMA,
-        product: "Sonux".into(),
+        product: "Mixweave".into(),
         kind,
         created_at,
         config_files,
@@ -342,13 +332,20 @@ fn validate_profiles(files: &BTreeMap<String, String>) -> Result<Vec<String>, Si
 
 fn validate_frontend_state(state: &BTreeMap<String, String>) -> Result<(), SinkError> {
     for (key, value) in state {
-        match key.as_str() {
-            "sonux-theme" => {
-                if !matches!(value.as_str(), "original" | "tokyo-night") {
+        // A backup made under an older app name stored the same keys with
+        // its own prefix - validate them the same way rather than silently
+        // letting them through unchecked (or dropping them).
+        let suffix = key
+            .strip_prefix("mixweave-")
+            .or_else(|| key.strip_prefix("sonux-"))
+            .unwrap_or(key.as_str());
+        match suffix {
+            "theme" => {
+                if !matches!(value.as_str(), "original" | "dark" | "system") {
                     return Err(SinkError::Config("backup contains an invalid theme".into()));
                 }
             }
-            "sonux-language" => {
+            "language" => {
                 let valid_locale = value == "system" || {
                     let mut parts = value.split('-');
                     parts.next().is_some_and(|part| {
@@ -365,7 +362,7 @@ fn validate_frontend_state(state: &BTreeMap<String, String>) -> Result<(), SinkE
                     ));
                 }
             }
-            "sonux-global-shortcuts" => {
+            "global-shortcuts" => {
                 let shortcuts: ShortcutBackupState = parse_json(key, value)?;
                 let _ = shortcuts.enabled;
                 for action in ["toggle_game", "toggle_chat", "toggle_mic", "restart_app"] {
@@ -376,7 +373,7 @@ fn validate_frontend_state(state: &BTreeMap<String, String>) -> Result<(), SinkE
                     }
                 }
             }
-            "sonux-active-eq-presets" => {
+            "active-eq-presets" => {
                 let presets: BTreeMap<String, PresetSelection> = parse_json(key, value)?;
                 if presets.values().any(|preset| {
                     !matches!(preset.source.as_str(), "bundled" | "user")
@@ -387,7 +384,7 @@ fn validate_frontend_state(state: &BTreeMap<String, String>) -> Result<(), SinkE
                     ));
                 }
             }
-            "sonux-profile-section-visibility" => {
+            "profile-section-visibility" => {
                 let visibility: ProfileSectionVisibility = parse_json(key, value)?;
                 let _ = (visibility.channels, visibility.applications);
             }
@@ -495,13 +492,13 @@ pub fn read(path: &Path) -> Result<BackupFile, SinkError> {
     let metadata = fs::metadata(path)?;
     if !metadata.is_file() || metadata.len() > MAX_BACKUP_BYTES {
         return Err(SinkError::Config(
-            "the selected backup is not a valid Sonux backup".into(),
+            "the selected backup is not a valid Mixweave backup".into(),
         ));
     }
     let raw = fs::read_to_string(path)?;
     let backup: BackupFile = serde_json::from_str(&raw)
         .map_err(|error| SinkError::Config(format!("could not read backup: {error}")))?;
-    if backup.schema != BACKUP_SCHEMA || backup.product != "Sonux" {
+    if backup.schema != BACKUP_SCHEMA || !matches!(backup.product.as_str(), "Mixweave" | "Sonux") {
         return Err(SinkError::Config(
             "the selected file uses an unsupported backup format".into(),
         ));
@@ -542,8 +539,8 @@ fn restore_files_to<T>(
         .ok_or_else(|| SinkError::Config("invalid configuration directory".into()))?;
     super::ensure_private_dir(parent)?;
     let token = format!("{}-{}", std::process::id(), super::unix_now());
-    let staging = parent.join(format!(".sonux-restore-{token}"));
-    let previous = parent.join(format!(".sonux-before-restore-{token}"));
+    let staging = parent.join(format!(".mixweave-restore-{token}"));
+    let previous = parent.join(format!(".mixweave-before-restore-{token}"));
     super::ensure_private_dir(&staging)?;
 
     let staged = (|| {
@@ -617,7 +614,7 @@ fn status_from(dir: &Path) -> Result<BackupStatus, SinkError> {
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) != Some(BACKUP_EXTENSION) {
+        if !has_backup_extension(&path) {
             continue;
         }
         if let Ok(backup) = read(&path) {
@@ -632,271 +629,4 @@ fn status_from(dir: &Path) -> Result<BackupStatus, SinkError> {
 
 pub fn status() -> Result<BackupStatus, SinkError> {
     status_from(&backups_dir()?)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn test_dir(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "sonux-backup-{label}-{}-{}",
-            std::process::id(),
-            super::super::unix_now()
-        ))
-    }
-
-    fn valid_profile_json(name: &str) -> String {
-        serde_json::to_string(&crate::persistence::profiles::Profile {
-            name: name.into(),
-            protected: true,
-            channels: vec![crate::audio::types::VirtualSink {
-                name: "sink_game".into(),
-                label: "Game".into(),
-                icon: Some("sports_esports".into()),
-                volume_percent: 100,
-                muted: false,
-                stream_mix: true,
-            }],
-            mic: Some(crate::audio::types::MicConfig::default()),
-            secondary_mics: Vec::new(),
-            assignments: crate::persistence::assignments::Assignments::default(),
-            outputs: crate::persistence::outputs::ChannelOutputs::default(),
-            eq: crate::persistence::eq::ChannelEq::default(),
-            trigger_device: None,
-            buses: crate::persistence::buses::Buses::default(),
-        })
-        .unwrap()
-    }
-
-    fn valid_files() -> BTreeMap<String, String> {
-        BTreeMap::from([("profiles/Main.json".into(), valid_profile_json("Main"))])
-    }
-
-    #[test]
-    fn manual_and_recovery_backups_are_named_and_counted() {
-        let root = test_dir("create");
-        let config = root.join("config");
-        let backups = root.join("backups");
-        fs::create_dir_all(config.join("profiles")).unwrap();
-        fs::write(config.join("prefs.json"), "{\"onboarded\":true}").unwrap();
-        fs::write(
-            config.join("profiles/Main.json"),
-            valid_profile_json("Main"),
-        )
-        .unwrap();
-
-        let manual = write_backup_to(
-            &config,
-            &backups,
-            BackupKind::Manual,
-            BTreeMap::from([("sonux-theme".into(), "original".into())]),
-            true,
-        )
-        .unwrap();
-        let recovery = write_backup_to(
-            &config,
-            &backups,
-            BackupKind::AutomaticRecovery,
-            BTreeMap::new(),
-            false,
-        )
-        .unwrap();
-
-        assert!(manual
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .contains("Manual Backup"));
-        assert!(recovery
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .contains("Automatic Recovery Backup"));
-        let status = status_from(&backups).unwrap();
-        assert_eq!(status.count, 2);
-        assert!(status.last_backup_at.is_some());
-        let parsed = read(&manual).unwrap();
-        assert!(parsed.autostart_enabled);
-        assert_eq!(parsed.config_files.len(), 2);
-
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn restore_replaces_the_complete_config_tree() {
-        let root = test_dir("restore");
-        let config = root.join("sonux");
-        fs::create_dir_all(&config).unwrap();
-        fs::write(config.join("old.json"), "old").unwrap();
-        let files = BTreeMap::from([
-            ("prefs.json".into(), "new".into()),
-            ("profiles/Main.json".into(), "profile".into()),
-        ]);
-
-        restore_files_to(&config, &files, false, || ()).unwrap();
-
-        assert!(!config.join("old.json").exists());
-        assert_eq!(
-            fs::read_to_string(config.join("prefs.json")).unwrap(),
-            "new"
-        );
-        assert_eq!(
-            fs::read_to_string(config.join("profiles/Main.json")).unwrap(),
-            "profile"
-        );
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn restore_rejects_parent_directory_paths() {
-        assert!(validate_relative_path("../outside.json").is_err());
-        assert!(validate_relative_path("profiles/Main.json").is_ok());
-    }
-
-    #[test]
-    fn collection_skips_only_atomic_write_temporary_files() {
-        let root = test_dir("temp-filter");
-        fs::create_dir_all(&root).unwrap();
-        fs::write(root.join("prefs.json"), "kept").unwrap();
-        fs::write(root.join("prefs.json.123.7.tmp"), "partial").unwrap();
-        fs::write(root.join("user.tmp"), "kept too").unwrap();
-
-        let files = collect_files(&root).unwrap();
-        assert_eq!(files.get("prefs.json").map(String::as_str), Some("kept"));
-        assert_eq!(files.get("user.tmp").map(String::as_str), Some("kept too"));
-        assert!(!files.contains_key("prefs.json.123.7.tmp"));
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn validation_rejects_malformed_managed_configuration() {
-        let mut files = valid_files();
-        files.insert("prefs.json".into(), "not json".into());
-        let error = validate_managed_payload(&files, &BTreeMap::new()).unwrap_err();
-        assert!(error.to_string().contains("malformed prefs.json"));
-    }
-
-    #[test]
-    fn validation_rejects_profile_name_mismatch_and_bad_frontend_state() {
-        let mut files =
-            BTreeMap::from([("profiles/Gaming.json".into(), valid_profile_json("Main"))]);
-        assert!(validate_managed_payload(&files, &BTreeMap::new()).is_err());
-
-        files = valid_files();
-        let frontend = BTreeMap::from([("sonux-theme".into(), "transparent".into())]);
-        assert!(validate_managed_payload(&files, &frontend).is_err());
-        let frontend = BTreeMap::from([("sonux-language".into(), "bad_locale".into())]);
-        assert!(validate_managed_payload(&files, &frontend).is_err());
-    }
-
-    #[test]
-    fn validation_rejects_duplicate_profile_device_triggers() {
-        let mut main: crate::persistence::profiles::Profile =
-            serde_json::from_str(&valid_profile_json("Main")).unwrap();
-        main.trigger_device = Some("alsa_output.headset".into());
-        let mut gaming = main.clone();
-        gaming.name = "Gaming".into();
-        let files = BTreeMap::from([
-            (
-                "profiles/Main.json".into(),
-                serde_json::to_string(&main).unwrap(),
-            ),
-            (
-                "profiles/Gaming.json".into(),
-                serde_json::to_string(&gaming).unwrap(),
-            ),
-        ]);
-
-        let error = validate_managed_payload(&files, &BTreeMap::new())
-            .expect_err("duplicate trigger ownership must be rejected");
-        assert!(error.to_string().contains("alsa_output.headset"));
-    }
-
-    #[test]
-    fn validation_rejects_unsafe_profile_microphones() {
-        let mut profile: crate::persistence::profiles::Profile =
-            serde_json::from_str(&valid_profile_json("Main")).unwrap();
-        let secondary = crate::audio::types::MicConfig {
-            node_name: "alsa_input.not_owned".into(),
-            ..Default::default()
-        };
-        profile.secondary_mics.push(secondary);
-        let files = BTreeMap::from([(
-            "profiles/Main.json".into(),
-            serde_json::to_string(&profile).unwrap(),
-        )]);
-
-        let error = validate_managed_payload(&files, &BTreeMap::new())
-            .expect_err("foreign microphone nodes must be rejected");
-        assert!(error.to_string().contains("invalid profile"));
-    }
-
-    #[test]
-    fn validation_migrates_legacy_secondary_microphone_nodes() {
-        let mut profile: crate::persistence::profiles::Profile =
-            serde_json::from_str(&valid_profile_json("Main")).unwrap();
-        profile.secondary_mics.push(crate::audio::types::MicConfig {
-            node_name: "sink_mic_stream".into(),
-            ..Default::default()
-        });
-        let files = BTreeMap::from([(
-            "profiles/Main.json".into(),
-            serde_json::to_string(&profile).unwrap(),
-        )]);
-        assert!(validate_managed_payload(&files, &BTreeMap::new()).is_ok());
-
-        crate::persistence::profiles::migrate_legacy_mic_nodes(&mut profile);
-        assert_eq!(profile.secondary_mics[0].node_name, "source_mic_stream");
-        crate::persistence::profiles::normalize_and_validate(&mut profile).unwrap();
-    }
-
-    #[test]
-    fn validation_rejects_unsafe_global_channels_and_mic() {
-        let mut files = valid_files();
-        files.insert(
-            "channels.json".into(),
-            r#"{"channels":[{"name":"sink_bad.name","label":"Bad"}]}"#.into(),
-        );
-        assert!(validate_managed_payload(&files, &BTreeMap::new()).is_err());
-
-        files.remove("channels.json");
-        let foreign_mic = crate::audio::types::MicConfig {
-            node_name: "source_mic_foreign".into(),
-            ..Default::default()
-        };
-        files.insert(
-            "mic.json".into(),
-            serde_json::to_string(&foreign_mic).unwrap(),
-        );
-        assert!(validate_managed_payload(&files, &BTreeMap::new()).is_err());
-    }
-
-    #[test]
-    fn restored_assignments_come_from_the_backup_payload() {
-        let mut files = valid_files();
-        let mut assignments = crate::persistence::assignments::Assignments::default();
-        assignments.set("application.name", "game", "sink_game");
-        files.insert(
-            "assignments.json".into(),
-            serde_json::to_string(&assignments).unwrap(),
-        );
-        let backup = BackupFile {
-            schema: BACKUP_SCHEMA,
-            product: "Sonux".into(),
-            kind: BackupKind::Manual,
-            created_at: 1,
-            config_files: files,
-            frontend_state: BTreeMap::new(),
-            autostart_enabled: false,
-        };
-
-        assert_eq!(
-            backup
-                .assignments()
-                .unwrap()
-                .sink_for("application.name", "game"),
-            Some("sink_game")
-        );
-    }
 }

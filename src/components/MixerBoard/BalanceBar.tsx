@@ -39,17 +39,25 @@ export function BalanceBar() {
   const dragging = useRef(false);
   const [pickingA, setPickingA] = useState(false);
   const [pickingB, setPickingB] = useState(false);
+  // True while a drag sits inside the magnet zone around center - purely a
+  // visual cue (the value itself already snaps in `apply`), so the user can
+  // see the pull instead of just feeling the value jump.
+  const [magnetized, setMagnetized] = useState(false);
 
   // pos ∈ [−1, +1]: + favors B (A ducked), − favors A (B ducked).
   const pos = a && b
     ? Math.max(-1, Math.min(1, (b.volume_percent - a.volume_percent) / 100))
     : 0;
 
-  const apply = (p: number) => {
+  const SNAP_ZONE = 0.05;
+
+  const apply = (p: number, snap = true) => {
     if (!a || !b) return;
     const clamped = Math.max(-1, Math.min(1, p));
+    const near = snap && Math.abs(clamped) < SNAP_ZONE;
+    setMagnetized(near);
     // Snap to true center near the middle.
-    const snapped = Math.abs(clamped) < 0.04 ? 0 : clamped;
+    const snapped = near ? 0 : clamped;
     void setChannelVolume(a.name, Math.round(100 * Math.min(1, 1 - snapped)));
     void setChannelVolume(b.name, Math.round(100 * Math.min(1, 1 + snapped)));
   };
@@ -77,6 +85,36 @@ export function BalanceBar() {
       window.removeEventListener("pointerup", up);
     };
   }, []);
+
+  const wheelState = useRef({ pos, apply });
+  wheelState.current = { pos, apply };
+  const visible = showBalance && Boolean(a && b) && channels.length >= 2;
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!visible || !track) return;
+    let accumulated = 0;
+    let lastEvent = 0;
+    const wheel = (event: WheelEvent) => {
+      if (event.ctrlKey || dragging.current) return;
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (!delta) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.timeStamp - lastEvent > 250 || Math.sign(delta) !== Math.sign(accumulated)) accumulated = 0;
+      lastEvent = event.timeStamp;
+      accumulated += delta * (event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 100 : 1);
+      const steps = Math.trunc(accumulated / 100);
+      if (!steps) return;
+      accumulated -= steps * 100;
+      // Up/left favors A; down/right favors B. Discrete input must escape
+      // the drag's center magnet, including fine adjustments with Shift.
+      const next = Math.max(-1, Math.min(1, wheelState.current.pos + steps * (event.shiftKey ? 0.01 : 0.05)));
+      wheelState.current.pos = next;
+      wheelState.current.apply(next, false);
+    };
+    track.addEventListener("wheel", wheel, { passive: false });
+    return () => track.removeEventListener("wheel", wheel);
+  }, [visible, a?.name, b?.name]);
 
   if (!showBalance || !a || !b || channels.length < 2) return null;
 
@@ -120,7 +158,7 @@ export function BalanceBar() {
     <div className="balance-bar" title={t("balance.hint")}>
       {side(a, pickingA, setPickingA, b, (name) => void setBalanceChannels(name, b!.name))}
       <div
-        className="bal-track"
+        className={"bal-track" + (magnetized ? " magnetized" : "")}
         ref={trackRef}
         role="slider"
         tabIndex={0}
@@ -134,7 +172,7 @@ export function BalanceBar() {
           max: 100,
           step: 4,
           value: Math.round(pos * 100),
-          onChange: (next) => apply(next / 100),
+          onChange: (next) => apply(next / 100, false),
         })}
         title={t("balance.slideHint", { first: a.label, firstValue: a.volume_percent, second: b.label, secondValue: b.volume_percent })}
         onPointerDown={(e) => {
@@ -144,6 +182,13 @@ export function BalanceBar() {
         onDoubleClick={() => apply(0)}
       >
         <div className="bal-center" />
+        <div
+          className="bal-fill"
+          style={{
+            left: `${pos >= 0 ? 50 : ((pos + 1) / 2) * 100}%`,
+            width: `${Math.abs(pos) * 50}%`,
+          }}
+        />
         <div className="bal-cap" style={{ left: `${((pos + 1) / 2) * 100}%` }} />
       </div>
       {side(b, pickingB, setPickingB, a, (name) => void setBalanceChannels(a!.name, name))}

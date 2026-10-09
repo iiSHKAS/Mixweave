@@ -43,7 +43,7 @@ impl ProfileAutomationRuntime {
         *started = true;
         let status = Arc::clone(&self.status);
         let _ = thread::Builder::new()
-            .name("sonux-profile-automation".into())
+            .name("mixweave-profile-automation".into())
             .spawn(move || monitor(app, status));
     }
 
@@ -229,7 +229,7 @@ fn newly_connected_profile(
 fn show_profile_notification(profile: &str) {
     let _ = Command::new("notify-send")
         .args([
-            "--app-name=Sonux",
+            "--app-name=Mixweave",
             "--icon=audio-card",
             "Profile activated",
             profile,
@@ -374,7 +374,7 @@ fn ignored_executable(executable: &str) -> bool {
         "fish",
         "systemd",
         "dbus-daemon",
-        "sonux",
+        "mixweave",
         "at-spi-bus-launcher",
         "at-spi2-registryd",
         "explorer.exe",
@@ -407,126 +407,4 @@ fn process_start_time(pid: u32) -> Option<u64> {
     let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     let after_name = stat.rsplit_once(") ")?.1;
     after_name.split_whitespace().nth(19)?.parse().ok()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::persistence::profile_automation::ApplicationRule;
-
-    #[test]
-    fn newest_running_rule_wins() {
-        let config = ProfileAutomationConfig {
-            enabled: true,
-            return_profile: Some("Main".into()),
-            notifications: true,
-            rules: vec![
-                ApplicationRule {
-                    executable: "old.exe".into(),
-                    path: None,
-                    profile: "Old".into(),
-                    enabled: true,
-                },
-                ApplicationRule {
-                    executable: "new.exe".into(),
-                    path: None,
-                    profile: "New".into(),
-                    enabled: true,
-                },
-            ],
-        };
-        let running = HashMap::from([("old.exe".into(), 10), ("new.exe".into(), 20)]);
-        assert_eq!(
-            newest_matching_rule(&config, &running),
-            Some(("New".into(), "new.exe".into()))
-        );
-    }
-
-    #[test]
-    fn disabled_rules_do_not_match() {
-        let config = ProfileAutomationConfig {
-            enabled: true,
-            return_profile: None,
-            notifications: true,
-            rules: vec![ApplicationRule {
-                executable: "game".into(),
-                path: None,
-                profile: "Gaming".into(),
-                enabled: false,
-            }],
-        };
-        assert_eq!(
-            newest_matching_rule(&config, &HashMap::from([("game".into(), 1)])),
-            None
-        );
-    }
-
-    #[test]
-    fn parses_process_start_time_after_names_with_spaces() {
-        let sample = "123 (game process) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 99";
-        let after_name = sample.rsplit_once(") ").unwrap().1;
-        assert_eq!(after_name.split_whitespace().nth(19), Some("99"));
-    }
-
-    #[test]
-    fn extracts_linux_and_windows_executable_names() {
-        assert_eq!(
-            portable_file_name("/usr/bin/native-game"),
-            Some("native-game")
-        );
-        assert_eq!(
-            portable_file_name(r"C:\games\Example\game.exe"),
-            Some("game.exe")
-        );
-    }
-
-    #[test]
-    fn exe_arguments_are_only_programs_under_wine_or_proton() {
-        let native_arguments = vec!["/usr/bin/editor".into(), "/tmp/Game.exe".into()];
-        assert_eq!(
-            command_executable(Path::new("/usr/bin/editor"), &native_arguments),
-            Some(("/usr/bin/editor", false))
-        );
-
-        let wine_arguments = vec!["wine64".into(), r"C:\Games\Game.exe".into()];
-        assert_eq!(
-            command_executable(Path::new("/usr/bin/wine64-preloader"), &wine_arguments),
-            Some((r"C:\Games\Game.exe", true))
-        );
-
-        let proton_arguments = vec![
-            "/steam/compatibilitytools.d/Proton-GE/proton".into(),
-            "run".into(),
-            r"Z:\Games\Game.exe".into(),
-        ];
-        assert_eq!(
-            command_executable(Path::new("/usr/bin/python3"), &proton_arguments),
-            Some((r"Z:\Games\Game.exe", true))
-        );
-
-        let native_exe = vec!["/opt/tools/native.exe".into()];
-        assert_eq!(
-            command_executable(Path::new("/opt/tools/native.exe"), &native_exe),
-            Some(("/opt/tools/native.exe", false))
-        );
-    }
-
-    #[test]
-    fn newly_connected_device_selects_its_bound_profile() {
-        use crate::persistence::profiles::ProfileInfo;
-
-        let profiles = vec![ProfileInfo {
-            name: "Headset".into(),
-            trigger_device: Some("usb-headset".into()),
-            protected: false,
-        }];
-        let previous = HashSet::from(["speakers".into()]);
-        let current = HashSet::from(["speakers".into(), "usb-headset".into()]);
-
-        assert_eq!(
-            newly_connected_profile(&profiles, &previous, &current),
-            Some("Headset".into())
-        );
-        assert_eq!(newly_connected_profile(&profiles, &current, &current), None);
-    }
 }

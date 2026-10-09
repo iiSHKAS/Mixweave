@@ -59,9 +59,10 @@ export function MicEqEditor({
   return (
     <div className="eqm-editor">
       <div className="eqm-head">
-        <div className="processing-toggle-title">
-          <Toggle on={eq.enabled} onClick={() => apply({ ...eq, enabled: !eq.enabled })} />
+        <div className="processing-heading">
+          <span className="setting-icon"><Ms name="equalizer" /></span>
           <div className="rtitle">{t("equalizer.title")}</div>
+          <Toggle on={eq.enabled} onClick={() => apply({ ...eq, enabled: !eq.enabled })} />
         </div>
         <div className="eqm-head-actions">
           <button

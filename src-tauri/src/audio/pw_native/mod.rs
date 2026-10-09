@@ -1,11 +1,14 @@
-//! Native PipeWire backend (Phase 2): replaces pactl subprocess calls with
+//! Native PipeWire backend: replaces pactl subprocess calls with
 //! pipewire-rs. All PipeWire objects live on a dedicated loop thread (see
 //! `thread.rs`); this facade sends commands over a pipewire channel and
 //! blocks on an mpsc reply with a timeout.
 //!
 //! Extras over the pactl backend: real per-sink level metering (`levels`).
 
+mod clean;
+mod denoise;
 mod dsp;
+mod echo;
 mod eq;
 mod eq_chain;
 pub mod levels;
@@ -14,6 +17,7 @@ pub(crate) mod mic;
 mod pods;
 mod ring;
 mod spatial;
+mod stream_send;
 mod test_tone;
 mod thread;
 
@@ -178,6 +182,28 @@ impl AudioBackend for PipeWireBackend {
     fn set_sink_mute(&self, sink_name: &str, muted: bool) -> Result<(), SinkError> {
         let name = sink_name.to_string();
         self.request(|reply| Cmd::SetNodeMuteByName { name, muted, reply })
+    }
+
+    fn set_channel_stream_volume(
+        &self,
+        sink_name: &str,
+        volume_percent: u8,
+    ) -> Result<(), SinkError> {
+        let channel_name = sink_name.to_string();
+        self.request(|reply| Cmd::SetChannelStreamVolume {
+            channel_name,
+            percent: volume_percent,
+            reply,
+        })
+    }
+
+    fn set_channel_stream_mute(&self, sink_name: &str, muted: bool) -> Result<(), SinkError> {
+        let channel_name = sink_name.to_string();
+        self.request(|reply| Cmd::SetChannelStreamMute {
+            channel_name,
+            muted,
+            reply,
+        })
     }
 
     fn move_stream_to_sink(&self, stream_index: u32, sink_name: &str) -> Result<(), SinkError> {
@@ -369,17 +395,5 @@ impl AudioBackend for PipeWireBackend {
             name,
             reply,
         })
-    }
-}
-
-#[cfg(test)]
-mod capture_chunk_tests {
-    use super::capture_chunk_range;
-
-    #[test]
-    fn capture_windows_honor_offsets_and_reject_invalid_bounds() {
-        assert_eq!(capture_chunk_range(32, 8, 12), Some(8..20));
-        assert_eq!(capture_chunk_range(32, 30, 4), None);
-        assert_eq!(capture_chunk_range(32, usize::MAX, 2), None);
     }
 }

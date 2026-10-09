@@ -29,14 +29,16 @@ const yToDb = (y: number) =>
 const fxToX = (fx: number) => LEFT + fx * (W - LEFT - RIGHT);
 const xToFx = (x: number) => (x - LEFT) / (W - LEFT - RIGHT);
 
-/** Frequency regions across the top of the plot. */
-const REGIONS: { label: TranslationKey; to: number }[] = [
-  { label: "equalizer.region.subBass", to: 60 },
-  { label: "equalizer.region.bass", to: 250 },
-  { label: "equalizer.region.lowMids", to: 500 },
-  { label: "equalizer.region.midRange", to: 2000 },
-  { label: "equalizer.region.upperMids", to: 6000 },
-  { label: "equalizer.region.highs", to: 20000 },
+/** Frequency regions across the top of the plot. These are the names engineers
+ * and players know these bands by, so they stay in English in every language
+ * (and keep the letter-spaced caps style, which breaks joined scripts). */
+const REGIONS: { label: string; to: number }[] = [
+  { label: "SUB BASS", to: 60 },
+  { label: "BASS", to: 250 },
+  { label: "LOW MIDS", to: 500 },
+  { label: "MID RANGE", to: 2000 },
+  { label: "UPPER MIDS", to: 6000 },
+  { label: "HIGHS", to: 20000 },
 ];
 
 /** Frequencies that get a labeled vertical grid line. */
@@ -278,7 +280,7 @@ export function EqCurve({
         <g key={label}>
           <rect className="eqm-region" x={x0 + 1} y={2} width={x1 - x0 - 2} height={HEAD - 4} rx={3} />
           <text className="eqm-region-label" x={(x0 + x1) / 2} y={2 + (HEAD - 4) / 2 + 1}>
-            {t(label)}
+            {label}
           </text>
         </g>
       ))}

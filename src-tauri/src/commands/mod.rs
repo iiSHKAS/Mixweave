@@ -4,6 +4,8 @@ pub mod channel_test;
 pub mod channels;
 pub mod devices;
 pub mod eq;
+pub mod hardware;
+pub mod linux_shortcuts;
 pub mod mic;
 pub mod profiles;
 pub mod routing;

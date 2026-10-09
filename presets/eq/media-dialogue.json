@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "name": "Media Dialogue",
+  "author": "MixWeave",
+  "description": "Headphone series and quiet viewing: mild speech presence and reduced loud/quiet swings, with makeup gain for quiet passages. Gentle crossfeed, no gate; compression acts on the whole mix, not isolated voices.",
+  "enabled": true,
+  "preamp_db": -3.5,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 140,
+      "gain_db": -2,
+      "q": 0.71
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 300,
+      "gain_db": -1,
+      "q": 0.9
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 2000,
+      "gain_db": 2,
+      "q": 0.8
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 5500,
+      "gain_db": -1.5,
+      "q": 1.2
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 10000,
+      "gain_db": -1,
+      "q": 0.71
+    }
+  ],
+  "tone_bass_db": 0,
+  "tone_voice_db": 0,
+  "tone_treble_db": 0,
+  "boost_db": 2,
+  "gate_enabled": false,
+  "comp_enabled": true,
+  "comp_threshold_db": -26,
+  "comp_ratio": 3,
+  "limiter_enabled": true,
+  "limiter_ceiling_db": -1,
+  "playback_mode": "headphones",
+  "spatial_enabled": false,
+  "spatial_tuning": 0.5,
+  "spatial_distance": 0.5
+}

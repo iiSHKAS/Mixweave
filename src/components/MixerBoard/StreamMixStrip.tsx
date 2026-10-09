@@ -1,68 +1,77 @@
-import { useState } from "react";
+import { memo, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useMixerStore } from "../../store/mixer";
-import type { AppIdentity, BusDef } from "../../types";
-import { busMembers, MASTER_BUS, MAX_VOLUME } from "../../types";
+import { useStreamerModeStore } from "../../store/streamerMode";
+import type { BusDef } from "../../types";
+import { busMembers, MASTER_BUS, STREAMER_MODE_BUS, MAX_VOLUME } from "../../types";
+import { useVolumeCeiling } from "../../store/volumeRange";
 import { volToDb } from "../../lib/audio";
-import { Ms } from "../Icons";
+import { channelIcon, Ms } from "../Icons";
 import { ConfirmModal } from "../ConfirmModal";
 import { MenuCheckItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Fader } from "./Fader";
 import { VuMeter } from "./VuMeter";
+import { StreamerLanes, bothLanesMuted } from "./StreamerLanes";
+import { ChannelShortcutsPopover } from "./ChannelShortcutsPopover";
+import { useChannelShortcuts } from "../../store/channelShortcuts";
+import { HardwareDevices } from "./HardwareDevices";
 import { ProfileMenu } from "../TitleBar/ProfileMenu";
-import { AppIcon } from "../AppList/AppIcon";
 import { useI18n } from "../../i18n";
-import { applicationGroupKey, groupSeenApps } from "../../lib/appGroups";
-
-const APP_DRAG_TYPE = "application/x-sonux-routed-app";
-
-interface DraggableApp {
-  key: string;
-  name: string;
-  iconPath: string | null;
-  active: boolean;
-  streamIndexes: number[];
-  identities: AppIdentity[];
-  desktopId: string | null;
-  hasUnrouted: boolean;
-}
 
 /**
  * A mix (record bus): aggregates the chosen channels into a capturable
  * source. The label is exactly the device name recorders display - rename
- * it and OBS sees the new name. Volume/mute shape what recorders hear,
- * not what you hear.
+ * it and OBS sees the new name. Volume/mute shape what recorders hear, not
+ * what you hear - except for the master mix, which is the exception: its
+ * volume/mute instead rescale and silence every channel's own live output
+ * (backend: `push_master_gain_to_channels`), so it's the true overall
+ * listening volume, not just a recording tap.
  */
-/** Compact "what this mix carries" label for the membership button. */
-export function BusStrip({
+/** Compact "what this mix carries" label for the membership button.
+ *  Memoized alongside ChannelStrip/MicStrip so a channel's fader drag
+ *  doesn't re-render Master or the other mixes too. */
+function BusStripBase({
   bus,
+  staggerIndex,
   onManageProfiles,
 }: Readonly<{
   bus: BusDef;
+  staggerIndex: number;
   onManageProfiles: () => void;
 }>) {
   const { t } = useI18n();
-  const channels = useMixerStore((s) => s.channels);
+  const volumeCeiling = useVolumeCeiling(bus.name, MAX_VOLUME);
+  // A flattened primitive key per channel (name/label/icon only, no volume)
+  // instead of the raw `channels` array - keeps this bus strip from
+  // re-rendering every time a channel's fader moves.
+  const channelKeys = useMixerStore(useShallow((s) => s.channels
+    .map((c) => `${c.name}\u0000${c.label}\u0000${channelIcon(c)}`)));
+  const channels = channelKeys.map((key) => {
+    const [name, label, icon] = key.split("\u0000");
+    return { name, label, icon };
+  });
   const setBusMembers = useMixerStore((s) => s.setBusMembers);
   const setBusExclude = useMixerStore((s) => s.setBusExclude);
   const renameBus = useMixerStore((s) => s.renameBus);
   const removeBus = useMixerStore((s) => s.removeBus);
   const monitoring = useMixerStore((s) => s.monitors[bus.name] ?? false);
+  const streamMonitoring = useMixerStore((s) => s.monitors[STREAMER_MODE_BUS] ?? false);
   const toggleMonitor = useMixerStore((s) => s.toggleMonitor);
   const setBusVolume = useMixerStore((s) => s.setBusVolume);
   const setBusMute = useMixerStore((s) => s.setBusMute);
-  const appStreams = useMixerStore((s) => s.appStreams);
-  const seenApps = useMixerStore((s) => s.seenApps);
-  const routeAppGroup = useMixerStore((s) => s.routeAppGroup);
-  const setAppGroupAssignment = useMixerStore((s) => s.setAppGroupAssignment);
 
   const [managing, setManaging] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [appDragOver, setAppDragOver] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const shortcutBindings = useChannelShortcuts((s) => s.getBindings(bus.name));
+  const hasShortcuts = Object.values(shortcutBindings).some(Boolean);
 
-  // The master mix always exists and carries every channel.
+  // The master mix always exists, carries every channel, and is the one mix
+  // whose volume/mute are the true overall listening controls (see the
+  // component doc comment above).
   const isMaster = bus.name === MASTER_BUS;
   const displayLabel = isMaster ? t("mixer.group.master") : bus.label;
   const memberLabel = () => {
@@ -76,6 +85,14 @@ export function BusStrip({
   const volume = bus.volume_percent;
   const muted = bus.muted;
 
+  // Only Master uses two lanes; custom mixes keep a single fader. The Stream
+  // lane controls the independent master send via persistence::buses::streamer_gain.
+  const streamerMode = useStreamerModeStore((s) => s.enabled);
+  const streamerModeBus = useMixerStore((s) => s.buses.find((b) => b.name === STREAMER_MODE_BUS));
+  const streamVolume = streamerModeBus?.volume_percent ?? 100;
+  const streamMuted = streamerModeBus?.muted ?? false;
+  const cardMuted = isMaster && streamerMode ? bothLanesMuted(muted, streamMuted) : muted;
+
   const applyVolume = (v: number) => void setBusVolume(bus.name, v);
   const toggleMute = () => void setBusMute(bus.name, !muted);
   const commitRename = () => {
@@ -86,68 +103,6 @@ export function BusStrip({
   // What this mix actually carries (mode-aware).
   const allNames = channels.map((c) => c.name);
   const carried = busMembers(bus, allNames);
-
-  // Sonar-style inbox: Master carries every channel in the signal graph,
-  // while this panel shows only live playback apps that still need routing.
-  const unroutedByKey = new Map<string, DraggableApp>();
-  for (const stream of appStreams) {
-    const key = applicationGroupKey(stream);
-    const existing = unroutedByKey.get(key);
-    if (existing) {
-      existing.streamIndexes.push(stream.index);
-      existing.active ||= stream.active;
-      existing.desktopId ??= stream.desktop_id;
-      existing.hasUnrouted ||= stream.assigned_sink === null;
-      if (!existing.identities.some((identity) => (
-        identity.match_prop === stream.match_prop && identity.match_value === stream.match_value
-      ))) existing.identities.push({ match_prop: stream.match_prop, match_value: stream.match_value });
-    } else {
-      unroutedByKey.set(key, {
-        key,
-        name: stream.alias ?? stream.app_name,
-        iconPath: stream.icon_path,
-        active: stream.active,
-        streamIndexes: [stream.index],
-        identities: [{ match_prop: stream.match_prop, match_value: stream.match_value }],
-        desktopId: stream.desktop_id,
-        hasUnrouted: stream.assigned_sink === null,
-      });
-    }
-  }
-  for (const history of groupSeenApps(seenApps)) {
-    const existing = unroutedByKey.get(history.group_key);
-    if (!existing) continue;
-    for (const identity of history.identities) {
-      if (!existing.identities.some((candidate) => (
-        candidate.match_prop === identity.match_prop && candidate.match_value === identity.match_value
-      ))) existing.identities.push(identity);
-    }
-    existing.name = history.alias ?? existing.name;
-    existing.iconPath ??= history.icon_path;
-  }
-  const unroutedApps = Array.from(unroutedByKey.values()).filter((app) => app.hasUnrouted).sort((left, right) =>
-    left.name.localeCompare(right.name),
-  );
-
-  const hasAppDrag = (event: React.DragEvent) =>
-    Array.from(event.dataTransfer.types).includes(APP_DRAG_TYPE);
-
-  const unrouteApp = (event: React.DragEvent) => {
-    const raw = event.dataTransfer.getData(APP_DRAG_TYPE);
-    if (!raw) return;
-    event.preventDefault();
-    setAppDragOver(false);
-    try {
-      const app = JSON.parse(raw) as DraggableApp;
-      if (app.streamIndexes.length > 0) {
-        void routeAppGroup(app.streamIndexes, app.identities, app.desktopId, "");
-      } else {
-        void setAppGroupAssignment(app.identities, null);
-      }
-    } catch {
-      useMixerStore.setState({ error: t("mixer.mix.unrouteError") });
-    }
-  };
 
   const toggleMember = (channelName: string) => {
     const next = carried.includes(channelName)
@@ -161,22 +116,10 @@ export function BusStrip({
       className={
         "strip bus-strip" +
         (isMaster ? " master-strip" : "") +
-        (muted ? " muted" : "") +
-        (appDragOver ? " app-drop-target" : "")
+        (isMaster && streamerMode ? " streamer" : "") +
+        (cardMuted ? " muted" : "")
       }
-      onDragOver={(event) => {
-        if (isMaster && hasAppDrag(event)) {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-          setAppDragOver(true);
-        }
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAppDragOver(false);
-      }}
-      onDrop={(event) => {
-        if (isMaster && hasAppDrag(event)) unrouteApp(event);
-      }}
+      style={{ ["--stagger" as string]: staggerIndex }}
     >
       {!isMaster && (
         <button
@@ -193,7 +136,7 @@ export function BusStrip({
       <div className="strip-head">
         <div className="strip-title-row">
           <div className="strip-icon strip-icon-bus">
-            <Ms name={isMaster ? "instant_mix" : "radio_button_checked"} />
+            <Ms name={isMaster ? "speaker" : "radio_button_checked"} />
           </div>
           {isMaster ? (
             <div className="strip-name">{displayLabel}</div>
@@ -267,81 +210,128 @@ export function BusStrip({
         )}
       </div>
 
-      <div className="strip-preset-slot">
-        {isMaster ? (
-          <ProfileMenu compact onManageProfiles={onManageProfiles} />
-        ) : (
-          <div className="strip-preset-static">
-            <Ms name="podcasts" />
-            <span>{t("mixer.mix.routing")}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="strip-body">
-        <Fader
-          value={volume}
-          max={MAX_VOLUME}
-          ariaLabel={t("mixer.mix.volume", { mix: bus.label })}
-          onChange={applyVolume}
-        />
-        <VuMeter source={bus.name} enabled={!muted} />
-      </div>
-
-      <div className="strip-readout">
-        {volume}
-        <span style={{ fontSize: 11 }}>%</span> <span className="db">{volToDb(volume)}</span>
-      </div>
-
-      <div className="strip-btns">
-        <button
-          type="button"
-          className={"sbtn" + (muted ? " on-mute" : "")}
-          onClick={toggleMute}
-          aria-pressed={muted}
-          title={t(muted ? "mixer.mix.unmute" : "mixer.mix.mute")}
-        >
-          <Ms name={muted ? "volume_off" : "volume_up"} style={{ fontSize: 16 }} />
-        </button>
-        <button
-          type="button"
-          className={"sbtn" + (monitoring ? " on-mon" : "")}
-          onClick={() => void toggleMonitor(bus.name)}
-          aria-pressed={monitoring}
-          title={t("mixer.mix.monitor")}
-        >
-          <Ms name="headphones" style={{ fontSize: 16 }} />
-        </button>
-      </div>
-
-      <div
-        className={"strip-apps" + (isMaster ? "" : " strip-apps-passive")}
-        aria-label={isMaster ? t("mixer.mix.waitingApps") : t("mixer.mix.carriedChannels", { mix: bus.label })}
-      >
-        <div className="strip-apps-label">{isMaster ? t("mixer.mix.appsToRoute") : t("mixer.group.channels")}</div>
-        {isMaster ? (
-          unroutedApps.length === 0 ? (
-            <div className="strip-apps-empty">{t("mixer.mix.allRouted")}</div>
+      {!(isMaster && streamerMode) && (
+        <div className="strip-preset-slot">
+          {isMaster ? (
+            <ProfileMenu compact onManageProfiles={onManageProfiles} />
           ) : (
-            unroutedApps.map((app) => (
-              <div
-                className={"strip-app-chip" + (app.active ? " active" : "")}
-                key={app.key}
-                draggable
-                title={t("mixer.mix.dragApp", { application: app.name })}
-                onDragStart={(event) => {
-                  event.dataTransfer.effectAllowed = "move";
-                  event.dataTransfer.setData(APP_DRAG_TYPE, JSON.stringify(app));
-                }}
+            <div className="strip-preset-static">
+              <Ms name="podcasts" />
+              <span>{t("mixer.mix.routing")}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isMaster && streamerMode ? (
+        <StreamerLanes
+          displayName={displayLabel}
+          maxVolume={volumeCeiling}
+          personalVuSource={bus.name}
+          streamVuSource={STREAMER_MODE_BUS}
+          personal={{
+            value: volume,
+            muted,
+            onVolumeChange: applyVolume,
+            onMuteToggle: toggleMute,
+          }}
+          stream={{
+            value: streamVolume,
+            muted: streamMuted,
+            onVolumeChange: (v) => void setBusVolume(STREAMER_MODE_BUS, v),
+            onMuteToggle: () => void setBusMute(STREAMER_MODE_BUS, !streamMuted),
+          }}
+          personalSecondaryAction={false}
+          streamSecondaryAction={
+            <button
+              type="button"
+              className={"sbtn" + (streamMonitoring ? " on-mon" : "")}
+              onClick={() => void toggleMonitor(STREAMER_MODE_BUS)}
+              aria-pressed={streamMonitoring}
+              title={t("streamer.streamMonitor", { name: displayLabel })}
+            >
+              <Ms name="headphones" />
+            </button>
+          }
+        />
+      ) : (
+        <>
+          <div className="strip-readout">
+            <div className="ro-value">
+              <span className="ro-num">{volume}</span>
+              <span className="ro-pct">%</span>
+            </div>
+            <div className="db">{volToDb(volume)}</div>
+          </div>
+
+          <div className="strip-body">
+            <div className="channel-fader">
+              <Fader
+                value={volume}
+                max={volumeCeiling}
+                ariaLabel={isMaster ? t("mixer.mix.masterVolume") : t("mixer.mix.volume", { mix: bus.label })}
+                onChange={applyVolume}
+              />
+              <VuMeter source={bus.name} enabled={!muted} />
+            </div>
+          </div>
+
+          <div className="strip-btns">
+            <button
+              type="button"
+              className={"sbtn" + (muted ? " on-mute" : "")}
+              onClick={toggleMute}
+              aria-pressed={muted}
+              title={t(isMaster
+                ? (muted ? "mixer.mix.masterUnmute" : "mixer.mix.masterMute")
+                : (muted ? "mixer.mix.unmute" : "mixer.mix.mute"))}
+            >
+              <Ms name={muted ? "volume_off" : "volume_up"} />
+            </button>
+            {!isMaster && (
+              <button
+                type="button"
+                className={"sbtn" + (monitoring ? " on-mon" : "")}
+                onClick={() => void toggleMonitor(bus.name)}
+                aria-pressed={monitoring}
+                title={t("mixer.mix.monitor")}
               >
-                <span className="strip-app-icon"><AppIcon iconPath={app.iconPath} /></span>
-                <span className="strip-app-name">{app.name}</span>
-                {app.active && <span className="strip-app-live" title={t("mixer.running")} />}
-              </div>
-            ))
-          )
-        ) : (
-          carried.map((name) => {
+                <Ms name="headphones" />
+              </button>
+            )}
+            <div className="sbtn-anchor">
+              <button
+                type="button"
+                className={"sbtn" + (hasShortcuts ? " on-eq" : "")}
+                onClick={() => setShortcutsOpen((open) => !open)}
+                aria-pressed={shortcutsOpen}
+                title={t("channel.shortcuts.button", { channel: displayLabel })}
+              >
+                <Ms name="keyboard" />
+              </button>
+              <Popover
+                open={shortcutsOpen}
+                onClose={() => setShortcutsOpen(false)}
+                side="bottom"
+                align="end"
+                style={{ minWidth: 340 }}
+              >
+                <ChannelShortcutsPopover channelName={bus.name} channelLabel={displayLabel} />
+              </Popover>
+            </div>
+          </div>
+        </>
+      )}
+
+      {isMaster && <HardwareDevices />}
+
+      {!isMaster && (
+        <div
+          className="strip-apps strip-apps-passive"
+          aria-label={t("mixer.mix.carriedChannels", { mix: bus.label })}
+        >
+          <div className="strip-apps-label">{t("mixer.group.channels")}</div>
+          {carried.map((name) => {
             const channel = channels.find((candidate) => candidate.name === name);
             return (
               <div className="strip-app-chip" key={name}>
@@ -349,21 +339,16 @@ export function BusStrip({
                 <span className="strip-app-name">{channel?.label ?? name}</span>
               </div>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
 
-      <div
-        className="strip-route"
-        title={t("mixer.mix.sourceHint", { mix: bus.label })}
-      >
-        {isMaster && (
-          <>
-            <Ms name="podcasts" />
-            {t("mixer.mix.recordingSource")}
-          </>
-        )}
-      </div>
+      {!isMaster && (
+        <div
+          className="strip-route"
+          title={t("mixer.mix.sourceHint", { mix: bus.label })}
+        />
+      )}
 
       <ConfirmModal
         open={confirmingDelete}
@@ -377,3 +362,5 @@ export function BusStrip({
     </div>
   );
 }
+
+export const BusStrip = memo(BusStripBase);

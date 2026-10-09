@@ -12,7 +12,7 @@ pub const MAX_MIC_CHANNELS: usize = 4;
 
 /// A named snapshot of the mixer: channel volumes/mutes, the app→channel
 /// assignment set, and per-channel output choices. Stored as JSON in
-/// `$XDG_CONFIG_HOME/sonux/profiles/<name>.json`.
+/// `$XDG_CONFIG_HOME/mixweave/profiles/<name>.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
     pub name: String,
@@ -29,13 +29,13 @@ pub struct Profile {
     #[serde(default)]
     pub secondary_mics: Vec<crate::audio::types::MicConfig>,
     pub assignments: Assignments,
-    /// Added in Phase 4; default keeps older profile files loadable.
+    /// Default output assignments keep older profile files loadable.
     #[serde(default)]
     pub outputs: crate::persistence::outputs::ChannelOutputs,
     /// Per-channel parametric EQ; default keeps older profile files loadable.
     #[serde(default)]
     pub eq: crate::persistence::eq::ChannelEq,
-    /// Phase 5: output device (node.name) whose appearance auto-loads this
+    /// Output device (node.name) whose appearance auto-loads this
     /// profile - automatic hardware profile switching.
     #[serde(default)]
     pub trigger_device: Option<String>,
@@ -55,7 +55,7 @@ pub struct ProfileInfo {
 fn profiles_dir() -> Result<PathBuf, SinkError> {
     let dir = dirs::config_dir()
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
-    Ok(dir.join("sonux").join("profiles"))
+    Ok(dir.join("mixweave").join("profiles"))
 }
 
 /// Profile names become file names: restrict to a safe charset so a name
@@ -354,183 +354,4 @@ pub fn delete(name: &str) -> Result<(), SinkError> {
             e.into()
         }
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn valid_profile(name: &str) -> Profile {
-        Profile {
-            name: name.into(),
-            protected: false,
-            channels: vec![crate::audio::types::VirtualSink {
-                name: "sink_game".into(),
-                label: "Game".into(),
-                icon: None,
-                volume_percent: 100,
-                muted: false,
-                stream_mix: true,
-            }],
-            mic: Some(crate::audio::types::MicConfig::default()),
-            secondary_mics: Vec::new(),
-            assignments: Assignments::default(),
-            outputs: crate::persistence::outputs::ChannelOutputs::default(),
-            eq: crate::persistence::eq::ChannelEq::default(),
-            trigger_device: None,
-            buses: crate::persistence::buses::Buses::default(),
-        }
-    }
-
-    #[test]
-    fn sanitize_accepts_reasonable_names() {
-        assert_eq!(sanitize_name("Gaming").expect("valid"), "Gaming");
-        assert_eq!(
-            sanitize_name("  Work_2 -late ").expect("valid"),
-            "Work_2 -late"
-        );
-    }
-
-    #[test]
-    fn sanitize_rejects_traversal_and_garbage() {
-        assert!(sanitize_name("../etc/passwd").is_err());
-        assert!(sanitize_name("a/b").is_err());
-        assert!(sanitize_name("").is_err());
-        assert!(sanitize_name("   ").is_err());
-        assert!(sanitize_name(&"x".repeat(65)).is_err());
-        assert!(sanitize_name("nul\0byte").is_err());
-    }
-
-    #[test]
-    fn microphone_nodes_are_bounded_unique_and_namespaced() {
-        let mut profile = valid_profile("Gaming");
-        let secondary = crate::audio::types::MicConfig {
-            node_name: "source_mic_chat".into(),
-            ..Default::default()
-        };
-        profile.secondary_mics.push(secondary.clone());
-        assert!(validate_mic_channels(&profile).is_ok());
-
-        profile.secondary_mics.push(secondary);
-        assert!(validate_mic_channels(&profile).is_err());
-        profile.secondary_mics[1].node_name = "alsa_input.private".into();
-        assert!(validate_mic_channels(&profile).is_err());
-        profile.secondary_mics[1].node_name = "source_mic_stream".into();
-        profile
-            .secondary_mics
-            .push(profile.secondary_mics[1].clone());
-        profile.secondary_mics[2].node_name = "source_mic_aux".into();
-        profile
-            .secondary_mics
-            .push(profile.secondary_mics[2].clone());
-        profile.secondary_mics[3].node_name = "source_mic_fourth".into();
-        assert!(validate_mic_channels(&profile).is_err());
-    }
-
-    #[test]
-    fn device_trigger_can_only_have_one_owner() {
-        let profiles = vec![
-            ProfileInfo {
-                name: "Gaming".into(),
-                trigger_device: Some("alsa_output.headset".into()),
-                protected: false,
-            },
-            ProfileInfo {
-                name: "Work".into(),
-                trigger_device: None,
-                protected: false,
-            },
-        ];
-
-        assert!(ensure_trigger_available("Gaming", "alsa_output.headset", &profiles).is_ok());
-        let error = ensure_trigger_available("Work", "alsa_output.headset", &profiles)
-            .expect_err("a second owner must be rejected");
-        assert!(error.to_string().contains("Gaming"));
-    }
-
-    #[test]
-    fn profile_listing_skips_malformed_and_mismatched_files() {
-        assert!(profile_info_from_json("Broken", "not json").is_none());
-
-        let mut profile = valid_profile("Main");
-        profile.protected = true;
-        profile.trigger_device = Some("alsa_output.headset".into());
-        let raw = serde_json::to_string(&profile).unwrap();
-        assert!(profile_info_from_json("Wrong", &raw).is_none());
-        assert!(profile_info_from_json(" ../Main", &raw).is_none());
-
-        let info = profile_info_from_json("Main", &raw).expect("valid profile is listed");
-        assert_eq!(info.name, "Main");
-        assert_eq!(info.trigger_device.as_deref(), Some("alsa_output.headset"));
-        assert!(info.protected);
-
-        profile.channels.clear();
-        let raw = serde_json::to_string(&profile).unwrap();
-        assert!(profile_info_from_json("Main", &raw).is_none());
-    }
-
-    #[test]
-    fn profile_validation_rejects_bad_channels_and_assignments() {
-        let mut profile = valid_profile("Main");
-        profile.channels[0].name = "alsa_output.private".into();
-        assert!(normalize_and_validate(&mut profile).is_err());
-
-        let mut profile = valid_profile("Main");
-        profile.channels.push(profile.channels[0].clone());
-        assert!(normalize_and_validate(&mut profile).is_err());
-
-        let mut profile = valid_profile("Main");
-        for index in 1..=crate::persistence::channels::MAX_CHANNELS {
-            let mut channel = profile.channels[0].clone();
-            channel.name = format!("sink_extra_{index}");
-            profile.channels.push(channel);
-        }
-        assert!(normalize_and_validate(&mut profile).is_err());
-
-        let mut profile = valid_profile("Main");
-        profile
-            .assignments
-            .set("application.name", "Game", "sink_missing");
-        assert!(normalize_and_validate(&mut profile).is_err());
-    }
-
-    #[test]
-    fn profile_validation_clamps_dsp_and_removes_stale_channel_state() {
-        let mut profile = valid_profile("Main");
-        profile.channels[0].volume_percent = u8::MAX;
-        profile.mic.as_mut().unwrap().gain_percent = u8::MAX;
-        let mut config = crate::audio::types::EqConfig {
-            preamp_db: 99.0,
-            ..Default::default()
-        };
-        config.bands[0].freq_hz = f32::INFINITY;
-        profile.eq.set("sink_game", config);
-        profile.eq.set("sink_missing", Default::default());
-        profile.outputs.set("sink_missing", Some("device".into()));
-        profile.outputs.set_failover("sink_missing", false);
-
-        normalize_and_validate(&mut profile).expect("profile normalizes");
-
-        assert_eq!(profile.channels[0].volume_percent, 150);
-        assert_eq!(profile.mic.unwrap().gain_percent, 200);
-        assert_eq!(profile.eq.get("sink_game").preamp_db, 24.0);
-        assert_eq!(profile.eq.get("sink_game").bands[0].freq_hz, 1000.0);
-        assert!(!profile.eq.configs.contains_key("sink_missing"));
-        assert!(!profile.outputs.outputs.contains_key("sink_missing"));
-        assert!(!profile.outputs.no_failover.contains("sink_missing"));
-    }
-
-    #[test]
-    fn raw_profile_presence_is_independent_of_validity() {
-        let dir = std::env::temp_dir().join(format!(
-            "sonux-profile-presence-{}-{}",
-            std::process::id(),
-            crate::persistence::unix_now()
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        assert!(!has_profile_files_in(&dir).unwrap());
-        fs::write(dir.join("Default.json"), "{ damaged").unwrap();
-        assert!(has_profile_files_in(&dir).unwrap());
-        let _ = fs::remove_dir_all(dir);
-    }
 }

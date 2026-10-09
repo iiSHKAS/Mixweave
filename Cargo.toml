@@ -2,6 +2,15 @@
 members = ["src-tauri"]
 resolver = "2"
 
+# Shipped-build size/perf: strip debug symbols, let LTO and a single codegen
+# unit optimize across crate boundaries. opt-level stays at the default 3 -
+# this is real-time audio code, so speed still wins over the last few MiB.
+# (Workspace-level only - Cargo ignores [profile.*] in member packages.)
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+
 [patch."https://gitlab.freedesktop.org/pipewire/pipewire-rs"]
 # Clang 22 no longer emits bindings for PipeWire's cast-style ID macros.
 # Keep this narrow patch source-controlled until pipewire-rs handles them.

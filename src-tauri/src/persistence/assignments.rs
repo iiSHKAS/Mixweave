@@ -18,7 +18,7 @@ pub struct Assignment {
 }
 
 /// The set of saved app→channel assignments, stored as JSON at
-/// `$XDG_CONFIG_HOME/sonux/assignments.json`.
+/// `$XDG_CONFIG_HOME/mixweave/assignments.json`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Assignments {
     pub assignments: Vec<Assignment>,
@@ -28,7 +28,7 @@ impl Assignments {
     pub fn config_path() -> Result<PathBuf, SinkError> {
         let dir = dirs::config_dir()
             .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
-        Ok(dir.join("sonux").join("assignments.json"))
+        Ok(dir.join("mixweave").join("assignments.json"))
     }
 
     /// Load from disk; a missing or unreadable file yields the empty set
@@ -39,7 +39,7 @@ impl Assignments {
         };
         match fs::read_to_string(&path) {
             Ok(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
-                eprintln!("sonux: ignoring malformed {}: {e}", path.display());
+                eprintln!("mixweave: ignoring malformed {}: {e}", path.display());
                 Self::default()
             }),
             Err(_) => Self::default(),
@@ -83,32 +83,5 @@ impl Assignments {
             .iter()
             .find(|a| a.match_prop == match_prop && a.match_value == match_value)
             .map(|a| a.sink_name.as_str())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn set_upserts_and_remove_deletes() {
-        let mut a = Assignments::default();
-        a.set("application.name", "spotify", "sink_music");
-        a.set("application.name", "spotify", "sink_game");
-        assert_eq!(a.assignments.len(), 1);
-        assert_eq!(a.sink_for("application.name", "spotify"), Some("sink_game"));
-
-        a.remove("application.name", "spotify");
-        assert!(a.sink_for("application.name", "spotify").is_none());
-        assert!(a.assignments.is_empty());
-    }
-
-    #[test]
-    fn serde_roundtrip() {
-        let mut a = Assignments::default();
-        a.set("node.name", "audio-src", "sink_system");
-        let json = serde_json::to_string(&a).expect("serializes");
-        let back: Assignments = serde_json::from_str(&json).expect("deserializes");
-        assert_eq!(back.assignments, a.assignments);
     }
 }

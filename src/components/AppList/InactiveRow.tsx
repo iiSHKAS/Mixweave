@@ -10,7 +10,7 @@ import { useI18n } from "../../i18n";
  * A previously-seen app that isn't currently playing. Routing edits here
  * are "pre-routing": they take effect the moment the app next plays audio.
  * Ignored apps use the same row minus the routing control - they are hidden
- * from Sonux until un-ignored, so there is nothing to route.
+ * from Mixweave until un-ignored, so there is nothing to route.
  */
 export function InactiveRow({ app, ignored }: Readonly<{ app: SeenAppGroup; ignored?: boolean }>) {
   const { locale, t } = useI18n();

@@ -1,0 +1,244 @@
+/* Mixweave OSD - drawn by GNOME Shell, so it cannot read the app's CSS
+   variables; the two palettes below mirror Mixweave's Light and Dark Mode
+   (the app tells the extension which one is active on every Show call). */
+
+.sonux-osd {
+  min-width: 255px;
+  padding: 13px 14px;
+  spacing: 10px;
+  border-radius: 15px;
+  border-width: 1px;
+  border-style: solid;
+}
+.sonux-osd.dark {
+  background-color: rgba(50, 57, 65, 0.97);
+  border-color: #586371;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.sonux-osd.light {
+  background-color: rgba(209, 212, 215, 0.97);
+  border-color: #A4ABB3;
+  box-shadow: 0 10px 30px rgba(32, 39, 51, 0.28);
+}
+
+.sonux-osd-head {
+  spacing: 12px;
+}
+
+.sonux-osd-tile {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+.sonux-osd.dark .sonux-osd-tile {
+  background-color: rgba(255, 111, 57, 0.22);
+}
+.sonux-osd.light .sonux-osd-tile {
+  background-color: rgba(255, 111, 57, 0.18);
+}
+.sonux-osd.muted .sonux-osd-tile {
+  background-color: rgba(239, 68, 68, 0.20);
+}
+
+.sonux-osd-icon {
+  icon-size: 19px;
+}
+.sonux-osd.dark .sonux-osd-icon {
+  color: #FF8558;
+}
+.sonux-osd.light .sonux-osd-icon {
+  color: #E4571F;
+}
+.sonux-osd.muted .sonux-osd-icon {
+  color: #EF4444;
+}
+
+.sonux-osd-label {
+  font-size: 14px;
+  font-weight: 700;
+}
+.sonux-osd-value {
+  font-size: 20px;
+  font-weight: 700;
+}
+.sonux-osd.dark .sonux-osd-label,
+.sonux-osd.dark .sonux-osd-value {
+  color: #EEF0F3;
+}
+.sonux-osd.light .sonux-osd-label,
+.sonux-osd.light .sonux-osd-value {
+  color: #25282C;
+}
+.sonux-osd.dark.muted .sonux-osd-value {
+  color: #ADB5C0;
+}
+.sonux-osd.light.muted .sonux-osd-value {
+  color: #5D6570;
+}
+
+.sonux-osd-track {
+  border-radius: 4px;
+}
+.sonux-osd.dark .sonux-osd-track {
+  background-color: #252A30;
+}
+.sonux-osd.light .sonux-osd-track {
+  background-color: #B0B3B7;
+}
+.sonux-osd-fill {
+  border-radius: 4px;
+  background-color: #FF6F39;
+}
+.sonux-osd.muted .sonux-osd-fill {
+  background-color: #EF4444;
+}
+
+/* ---------- Looks chosen in Mixweave's Settings ---------- */
+
+/* Icons shared by the looks (same colours as the classic icon above). */
+.sonux-osd.dark .sonux-osd-seg-icon,
+.sonux-osd.dark .sonux-osd-disc-icon,
+.sonux-osd.dark .sonux-osd-tile-icon {
+  color: #FF8558;
+}
+.sonux-osd.light .sonux-osd-seg-icon,
+.sonux-osd.light .sonux-osd-disc-icon,
+.sonux-osd.light .sonux-osd-tile-icon {
+  color: #E4571F;
+}
+.sonux-osd.muted .sonux-osd-seg-icon,
+.sonux-osd.muted .sonux-osd-disc-icon,
+.sonux-osd.muted .sonux-osd-tile-icon {
+  color: #EF4444;
+}
+.sonux-osd-seg-icon {
+  icon-size: 15px;
+}
+.sonux-osd-disc-icon,
+.sonux-osd-tile-icon {
+  icon-size: 19px;
+}
+
+/* Segments */
+.sonux-osd-segments {
+  min-width: 290px;
+  spacing: 10px;
+}
+.sonux-osd-seg-head {
+  spacing: 6px;
+}
+.sonux-osd-value-big {
+  font-size: 30px;
+}
+.sonux-osd-segrow {
+  spacing: 3px;
+}
+.sonux-osd-seg {
+  border-radius: 4px;
+}
+.sonux-osd.dark .sonux-osd-seg {
+  background-color: #252A30;
+}
+.sonux-osd.light .sonux-osd-seg {
+  background-color: #B0B3B7;
+}
+.sonux-osd-seg.on.b0 { background-color: #FFA45E; }
+.sonux-osd-seg.on.b1 { background-color: #FF9A52; }
+.sonux-osd-seg.on.b2 { background-color: #FF8F47; }
+.sonux-osd-seg.on.b3 { background-color: #FF853F; }
+.sonux-osd-seg.on.b4 { background-color: #FF7A3A; }
+.sonux-osd-seg.on.b5 { background-color: #FF6F39; }
+.sonux-osd-seg.on.hot { background-color: #EF4444; }
+
+/* Vertical fader */
+.sonux-osd-fader {
+  min-width: 82px;
+  padding: 13px 0;
+  spacing: 10px;
+  border-radius: 25px;
+}
+.sonux-osd-disc {
+  width: 34px;
+  height: 34px;
+  border-radius: 17px;
+}
+.sonux-osd.dark .sonux-osd-disc {
+  background-color: rgba(255, 111, 57, 0.22);
+}
+.sonux-osd.light .sonux-osd-disc {
+  background-color: rgba(255, 111, 57, 0.18);
+}
+.sonux-osd.muted .sonux-osd-disc {
+  background-color: rgba(239, 68, 68, 0.20);
+}
+.sonux-osd-vtrack {
+  border-radius: 6px;
+}
+.sonux-osd.dark .sonux-osd-vtrack {
+  background-color: #252A30;
+}
+.sonux-osd.light .sonux-osd-vtrack {
+  background-color: #B0B3B7;
+}
+.sonux-osd-vfill {
+  border-radius: 6px;
+  background-color: #FF6F39;
+}
+.sonux-osd.muted .sonux-osd-vfill {
+  background-color: #EF4444;
+}
+.sonux-osd-value-fader {
+  font-size: 20px;
+  text-align: center;
+}
+.sonux-osd-name {
+  max-width: 84px;
+  font-size: 10px;
+  text-align: center;
+}
+.sonux-osd.dark .sonux-osd-name {
+  color: #ADB5C0;
+}
+.sonux-osd.light .sonux-osd-name {
+  color: #5D6570;
+}
+.sonux-osd.dark .sonux-osd-value-fader {
+  color: #EEF0F3;
+}
+.sonux-osd.light .sonux-osd-value-fader {
+  color: #25282C;
+}
+
+/* Waves */
+.sonux-osd-waves {
+  min-width: 305px;
+  padding: 12px 14px;
+  spacing: 10px;
+  border-radius: 16px;
+}
+.sonux-osd-mid {
+  spacing: 6px;
+}
+.sonux-osd-barrow {
+  spacing: 3px;
+}
+.sonux-osd-bar {
+  border-radius: 2px;
+}
+.sonux-osd.dark .sonux-osd-bar {
+  background-color: #252A30;
+}
+.sonux-osd.light .sonux-osd-bar {
+  background-color: #B0B3B7;
+}
+/* Same specificity as the track-color rules above (theme class + bar
+   class), so the lit color actually wins instead of being shadowed by
+   them. */
+.sonux-osd.dark .sonux-osd-bar.lit,
+.sonux-osd.light .sonux-osd-bar.lit {
+  background-color: #FF6F39;
+}
+.sonux-osd.dark.muted .sonux-osd-bar.lit,
+.sonux-osd.light.muted .sonux-osd-bar.lit {
+  background-color: #EF4444;
+}

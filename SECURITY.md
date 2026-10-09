@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Sonux is a small personal project without a fixed release schedule. Security updates are provided on a best-effort basis.
+Mixweave is a small personal project without a fixed release schedule. Security updates are provided on a best-effort basis.
 
 Version                                   Security support
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━
@@ -18,11 +18,11 @@ Please do not report suspected vulnerabilities through a public issue.
 
 Use GitHub's private vulnerability reporting feature:
 
-https://github.com/Haxinpro/Sonux/security/advisories/new
+https://github.com/iishkas/Mixweave/security/advisories/new
 
 Include as much of the following information as possible:
 
-- The affected Sonux version or commit
+- The affected Mixweave version or commit
 - Your Linux distribution and relevant package versions
 - A description of the vulnerability and its potential impact
 - Steps or a minimal example that reproduces the issue
@@ -36,4 +36,4 @@ accept the report, I will explain why when possible.
 For vulnerabilities originating in a third-party dependency, please also
 consider reporting the issue directly to that dependency's maintainers. You
 may still notify me privately when the vulnerability meaningfully affects
-Sonux.
+Mixweave.

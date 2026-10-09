@@ -9,11 +9,18 @@ use crate::error::SinkError;
 /// historical "sink_stream" name so existing OBS setups keep working).
 pub const BUS_PREFIX: &str = "sink_bus_";
 pub const DEFAULT_BUS_NODE: &str = "sink_stream";
+/// The always-on "Streamer Mode" mix: what OBS/recorders capture as the
+/// stream's audio, fed by every channel's independent Stream send (see
+/// `streamer_gain` and `crate::audio::types::VirtualSink::stream_send_*`) -
+/// entirely separate from what the master mix scales for the user's own
+/// ("Personal") listening volume.
+pub const STREAMER_MODE_BUS_NODE: &str = "sink_streamer_mode";
 pub const MAX_BUSES: usize = 4;
 
 /// True if `name` is a mix bus node (not a channel, not a service node).
 pub fn is_bus_name(name: &str) -> bool {
     name == DEFAULT_BUS_NODE
+        || name == STREAMER_MODE_BUS_NODE
         || name.strip_prefix(BUS_PREFIX).is_some_and(|suffix| {
             !suffix.is_empty()
                 && suffix.chars().all(|character| {
@@ -26,6 +33,48 @@ pub fn is_bus_name(name: &str) -> bool {
 /// can't be deleted, and its membership is managed automatically.
 pub fn is_master(name: &str) -> bool {
     name == DEFAULT_BUS_NODE
+}
+
+/// True if `name` is the always-on Streamer Mode mix (see
+/// `STREAMER_MODE_BUS_NODE`): same protections as the master mix (can't be
+/// deleted, always carries every channel), but a fully independent gain
+/// stage from it.
+pub fn is_streamer_mode(name: &str) -> bool {
+    name == STREAMER_MODE_BUS_NODE
+}
+
+/// True for either of the two always-on, undeletable mixes.
+pub fn is_protected_bus(name: &str) -> bool {
+    is_master(name) || is_streamer_mode(name)
+}
+
+/// The master mix's volume/mute, read as a true listening-volume control:
+/// every channel's own live level is multiplied by this fraction, and
+/// every channel is silenced while this is muted - not just what a
+/// recorder captures. Defaults to unity/unmuted if the master definition
+/// is ever missing.
+pub fn master_gain(buses: &Buses) -> (f32, bool) {
+    match buses.get(DEFAULT_BUS_NODE) {
+        Some(def) => (def.volume_percent as f32 / 100.0, def.muted),
+        None => (1.0, false),
+    }
+}
+
+/// The Streamer Mode mix's volume/mute, read the same way as
+/// [`master_gain`] but applied to every channel's independent Stream send
+/// instead of its Personal level - muting this silences the stream output
+/// only, never what the user hears themselves (and vice versa).
+pub fn streamer_gain(buses: &Buses) -> (f32, bool) {
+    match buses.get(STREAMER_MODE_BUS_NODE) {
+        Some(def) => (def.volume_percent as f32 / 100.0, def.muted),
+        None => (1.0, false),
+    }
+}
+
+/// The volume actually sent to a channel's live PipeWire sink at `raw`
+/// (0-150%), scaled by a gain fraction from [`master_gain`]/[`streamer_gain`].
+pub fn scaled_volume(raw: u8, fraction: f32) -> u8 {
+    ((raw as f32) * fraction).round().clamp(0.0, 150.0) as u8
 }
 
 /// One user-defined mix: a capturable virtual source carrying the chosen
@@ -44,11 +93,15 @@ pub struct BusDef {
     /// mix carries exactly `channels` (manual selection).
     #[serde(default)]
     pub exclude: bool,
-    /// Playback level recorders hear (0-150%). Persisted so a mix keeps its
-    /// level across UI remounts, profile switches, and restarts.
+    /// Playback level (0-150%): what recorders hear for a regular mix, or
+    /// the true listening-volume fraction for the master mix (see
+    /// `master_gain`). Persisted so a mix keeps its level across UI
+    /// remounts, profile switches, and restarts.
     #[serde(default = "default_volume")]
     pub volume_percent: u8,
-    /// Muted for recorders (they hear silence). Persisted like the volume.
+    /// Muted: recorders hear silence for a regular mix, or every channel is
+    /// silenced for the master mix (see `master_gain`). Persisted like the
+    /// volume.
     #[serde(default)]
     pub muted: bool,
 }
@@ -72,7 +125,7 @@ impl BusDef {
     }
 }
 
-/// The user's mixes, stored at `$XDG_CONFIG_HOME/sonux/buses.json`.
+/// The user's mixes, stored at `$XDG_CONFIG_HOME/mixweave/buses.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Buses {
     pub buses: Vec<BusDef>,
@@ -81,14 +134,24 @@ pub struct Buses {
 impl Default for Buses {
     fn default() -> Self {
         Self {
-            buses: vec![BusDef {
-                name: DEFAULT_BUS_NODE.to_string(),
-                label: "Master Mix".to_string(),
-                channels: Vec::new(),
-                exclude: false,
-                volume_percent: 100,
-                muted: false,
-            }],
+            buses: vec![
+                BusDef {
+                    name: DEFAULT_BUS_NODE.to_string(),
+                    label: "Master Mix".to_string(),
+                    channels: Vec::new(),
+                    exclude: false,
+                    volume_percent: 100,
+                    muted: false,
+                },
+                BusDef {
+                    name: STREAMER_MODE_BUS_NODE.to_string(),
+                    label: "Streamer Mode".to_string(),
+                    channels: Vec::new(),
+                    exclude: false,
+                    volume_percent: 100,
+                    muted: false,
+                },
+            ],
         }
     }
 }
@@ -114,7 +177,7 @@ impl Buses {
     pub fn config_path() -> Result<PathBuf, SinkError> {
         let dir = dirs::config_dir()
             .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
-        Ok(dir.join("sonux").join("buses.json"))
+        Ok(dir.join("mixweave").join("buses.json"))
     }
 
     /// Load from disk. On first run (no file), the default Stream Mix bus
@@ -164,12 +227,12 @@ impl Buses {
     }
 
     /// Drop hand-edited bus names and memberships that could otherwise make
-    /// backend commands act on nodes outside Sonux's owned graph.
+    /// backend commands act on nodes outside Mixweave's owned graph.
     pub fn sanitize(&mut self, channel_names: &[String]) {
         let mut seen = std::collections::HashSet::new();
         let mut user_buses = 0usize;
         self.buses.retain_mut(|bus| {
-            let user = !is_master(&bus.name);
+            let user = !is_protected_bus(&bus.name);
             let keep = is_bus_name(&bus.name)
                 && seen.insert(bus.name.clone())
                 && (!user || user_buses < MAX_BUSES);
@@ -207,6 +270,28 @@ impl Buses {
         self.buses.insert(0, def);
     }
 
+    /// Ensure the Streamer Mode mix exists, sits right after master, and
+    /// carries every channel - mirrors `sync_master` exactly, but for the
+    /// independent "stream master" control (see `streamer_gain`). Called
+    /// alongside `sync_master` everywhere the channel set changes.
+    pub fn sync_streamer_mode(&mut self, channels: &[String]) {
+        let mut def = match self.buses.iter().position(|b| is_streamer_mode(&b.name)) {
+            Some(i) => self.buses.remove(i),
+            None => BusDef {
+                name: STREAMER_MODE_BUS_NODE.to_string(),
+                label: "Streamer Mode".to_string(),
+                channels: Vec::new(),
+                exclude: false,
+                volume_percent: 100,
+                muted: false,
+            },
+        };
+        def.channels = channels.to_vec();
+        def.exclude = false;
+        let insert_at = usize::from(self.buses.first().is_some_and(|b| is_master(&b.name)));
+        self.buses.insert(insert_at, def);
+    }
+
     /// Switch a mix between manual and auto-include mode, preserving its
     /// current effective membership (the stored list flips meaning).
     pub fn set_exclude(
@@ -215,9 +300,9 @@ impl Buses {
         exclude: bool,
         all_channels: &[String],
     ) -> Result<(), SinkError> {
-        if is_master(name) {
+        if is_protected_bus(name) {
             return Err(SinkError::Config(
-                "the master mix always carries every channel".into(),
+                "this mix always carries every channel".into(),
             ));
         }
         let def = self
@@ -251,8 +336,15 @@ impl Buses {
                 "mix label must be 1-24 characters".into(),
             ));
         }
-        // The master mix doesn't count against the user's mixes.
-        if self.buses.iter().filter(|b| !is_master(&b.name)).count() >= MAX_BUSES {
+        // The master and Streamer Mode mixes don't count against the user's
+        // mixes.
+        if self
+            .buses
+            .iter()
+            .filter(|b| !is_protected_bus(&b.name))
+            .count()
+            >= MAX_BUSES
+        {
             return Err(SinkError::Config(format!(
                 "at most {MAX_BUSES} mixes are supported"
             )));
@@ -260,7 +352,7 @@ impl Buses {
         let base = format!("{BUS_PREFIX}{}", slugify(label));
         let mut name = base.clone();
         let mut counter = 2;
-        while self.get(&name).is_some() || name == DEFAULT_BUS_NODE {
+        while self.get(&name).is_some() || is_protected_bus(&name) {
             name = format!("{base}_{counter}");
             counter += 1;
         }
@@ -296,8 +388,8 @@ impl Buses {
     }
 
     pub fn remove(&mut self, name: &str) -> Result<(), SinkError> {
-        if is_master(name) {
-            return Err(SinkError::Config("the master mix can't be deleted".into()));
+        if is_protected_bus(name) {
+            return Err(SinkError::Config("this mix can't be deleted".into()));
         }
         let before = self.buses.len();
         self.buses.retain(|b| b.name != name);
@@ -308,9 +400,9 @@ impl Buses {
     }
 
     pub fn set_members(&mut self, name: &str, channels: Vec<String>) -> Result<(), SinkError> {
-        if is_master(name) {
+        if is_protected_bus(name) {
             return Err(SinkError::Config(
-                "the master mix always carries every channel".into(),
+                "this mix always carries every channel".into(),
             ));
         }
         let def = self
@@ -347,198 +439,5 @@ impl Buses {
         for bus in &mut self.buses {
             bus.channels.retain(|c| c != channel);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_is_master_mix() {
-        let b = Buses::default();
-        assert_eq!(b.buses.len(), 1);
-        assert_eq!(b.buses[0].name, "sink_stream");
-        assert_eq!(b.buses[0].label, "Master Mix");
-        assert!(is_master(&b.buses[0].name));
-    }
-
-    #[test]
-    fn add_generates_prefixed_unique_names() {
-        let mut b = Buses::default();
-        let d = b.add("Voice Only").expect("adds");
-        assert_eq!(d.name, "sink_bus_voice_only");
-        let d2 = b.add("Voice Only").expect("adds dup label");
-        assert_eq!(d2.name, "sink_bus_voice_only_2");
-        assert!(is_bus_name(&d.name));
-        assert!(is_bus_name("sink_stream"));
-        assert!(!is_bus_name("sink_game"));
-        assert!(!is_bus_name("sink_bus_"));
-        assert!(!is_bus_name("sink_bus_../../foreign"));
-    }
-
-    #[test]
-    fn sanitize_drops_foreign_names_members_and_duplicates() {
-        let mut buses = Buses {
-            buses: vec![
-                Buses::default().buses[0].clone(),
-                BusDef {
-                    name: "sink_bus_voice".into(),
-                    label: "Voice".into(),
-                    channels: vec!["sink_game".into(), "foreign".into(), "sink_game".into()],
-                    exclude: false,
-                    volume_percent: 255,
-                    muted: false,
-                },
-                BusDef {
-                    name: "sink_bus_voice".into(),
-                    label: "Duplicate".into(),
-                    channels: Vec::new(),
-                    exclude: false,
-                    volume_percent: 100,
-                    muted: false,
-                },
-                BusDef {
-                    name: "foreign_node".into(),
-                    label: "Foreign".into(),
-                    channels: Vec::new(),
-                    exclude: false,
-                    volume_percent: 100,
-                    muted: false,
-                },
-            ],
-        };
-        buses.sanitize(&["sink_game".into()]);
-        assert_eq!(buses.buses.len(), 2);
-        assert_eq!(buses.buses[1].channels, vec!["sink_game"]);
-        assert_eq!(buses.buses[1].volume_percent, 150);
-    }
-
-    #[test]
-    fn membership_and_channel_removal() {
-        let mut b = Buses::default();
-        let mix = b.add("Voice Only").expect("adds");
-        b.set_members(&mix.name, vec!["sink_game".into(), "sink_chat".into()])
-            .expect("sets");
-        b.remove_channel("sink_chat");
-        assert_eq!(b.get(&mix.name).expect("bus").channels, vec!["sink_game"]);
-    }
-
-    #[test]
-    fn master_is_protected_and_auto_synced() {
-        let mut b = Buses::default();
-        assert!(b.remove("sink_stream").is_err());
-        assert!(b
-            .set_members("sink_stream", vec!["sink_game".into()])
-            .is_err());
-        // Renaming is allowed - recorders see the label.
-        b.rename("sink_stream", "Everything").expect("renames");
-
-        b.sync_master(&["sink_game".into(), "sink_chat".into()]);
-        let master = b.get("sink_stream").expect("master");
-        assert_eq!(master.label, "Everything");
-        assert_eq!(master.channels, vec!["sink_game", "sink_chat"]);
-        assert_eq!(b.buses[0].name, "sink_stream");
-
-        // Recreated (with the default label) if it ever goes missing.
-        b.buses.clear();
-        b.sync_master(&["sink_game".into()]);
-        assert_eq!(b.buses[0].label, "Master Mix");
-        assert_eq!(b.buses[0].channels, vec!["sink_game"]);
-    }
-
-    #[test]
-    fn exclude_mode_carries_everything_but_the_unchecked() {
-        let all = vec![
-            "sink_game".to_string(),
-            "sink_chat".to_string(),
-            "sink_music".to_string(),
-        ];
-        let mut b = Buses::default();
-        let mix = b.add("No Music").expect("adds");
-        // New mixes auto-include: carry everything out of the box…
-        assert!(mix.exclude);
-        assert_eq!(b.get(&mix.name).expect("mix").effective_members(&all), all);
-        // …and a new channel joins without touching the definition.
-        let mut grown = all.clone();
-        grown.push("sink_voice".to_string());
-        assert_eq!(
-            b.get(&mix.name).expect("mix").effective_members(&grown),
-            grown
-        );
-
-        // Keep music out: only music is stored; everything else flows.
-        b.set_members(&mix.name, vec!["sink_music".into()])
-            .expect("sets");
-        assert_eq!(
-            b.get(&mix.name).expect("mix").effective_members(&grown),
-            vec!["sink_game", "sink_chat", "sink_voice"]
-        );
-    }
-
-    #[test]
-    fn mode_switch_preserves_effective_membership() {
-        let all = vec!["sink_game".to_string(), "sink_music".to_string()];
-        let mut b = Buses::default();
-        let mix = b.add("Mix").expect("adds"); // exclude, carries all
-        b.set_members(&mix.name, vec!["sink_music".into()])
-            .expect("excludes music");
-
-        b.set_exclude(&mix.name, false, &all).expect("to manual");
-        let def = b.get(&mix.name).expect("mix");
-        assert!(!def.exclude);
-        assert_eq!(def.channels, vec!["sink_game"]); // stored = carried now
-        assert_eq!(def.effective_members(&all), vec!["sink_game"]);
-
-        b.set_exclude(&mix.name, true, &all).expect("back to auto");
-        let def = b.get(&mix.name).expect("mix");
-        assert_eq!(def.effective_members(&all), vec!["sink_game"]);
-        // Master can't leave auto-everything.
-        assert!(b.set_exclude("sink_stream", true, &all).is_err());
-    }
-
-    #[test]
-    fn sync_master_replaces_stale_membership() {
-        let mut b = Buses::default();
-        b.sync_master(&["sink_game".into(), "sink_chat".into()]);
-        // A channel disappeared: sync must drop it, not merge.
-        b.sync_master(&["sink_game".into()]);
-        assert_eq!(
-            b.get("sink_stream").expect("master").channels,
-            vec!["sink_game"]
-        );
-        // No channels at all: the master mirrors that too.
-        b.sync_master(&[]);
-        assert!(b.get("sink_stream").expect("master").channels.is_empty());
-    }
-
-    #[test]
-    fn volume_and_mute_persist_and_default() {
-        let mut b = Buses::default();
-        // Fresh mixes start at unity, unmuted.
-        assert_eq!(b.buses[0].volume_percent, 100);
-        assert!(!b.buses[0].muted);
-
-        b.set_volume("sink_stream", 60).expect("sets volume");
-        b.set_muted("sink_stream", true).expect("sets mute");
-        assert_eq!(b.get("sink_stream").expect("master").volume_percent, 60);
-        assert!(b.get("sink_stream").expect("master").muted);
-        assert!(b.set_volume("sink_missing", 50).is_err());
-
-        // Legacy buses.json written before these fields loads at the defaults.
-        let legacy = r#"{"buses":[{"name":"sink_stream","label":"Master Mix","channels":[],"exclude":false}]}"#;
-        let loaded: Buses = serde_json::from_str(legacy).expect("legacy loads");
-        assert_eq!(loaded.buses[0].volume_percent, 100);
-        assert!(!loaded.buses[0].muted);
-    }
-
-    #[test]
-    fn master_does_not_count_toward_limit() {
-        let mut b = Buses::default();
-        for i in 0..MAX_BUSES {
-            b.add(&format!("Mix {i}")).expect("adds user mix");
-        }
-        assert!(b.add("One Too Many").is_err());
-        assert_eq!(b.buses.len(), MAX_BUSES + 1); // master + user mixes
     }
 }

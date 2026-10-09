@@ -6,13 +6,25 @@ data_home=${XDG_DATA_HOME:-"$HOME/.local/share"}
 app_id=dev.sonux.audio
 
 if command -v systemctl >/dev/null 2>&1; then
+  systemctl --user disable --now mixweave.service >/dev/null 2>&1 || true
   systemctl --user disable --now sonux.service >/dev/null 2>&1 || true
 fi
 
 rm -f -- \
+  "$bin_home/mixweave" \
   "$bin_home/sonux" \
   "$data_home/applications/$app_id.desktop" \
   "$data_home/icons/hicolor/128x128/apps/$app_id.png" \
+  "$data_home/icons/hicolor/256x256/apps/$app_id.png" \
+  "$data_home/icons/hicolor/512x512/apps/$app_id.png" \
+  "$data_home/doc/mixweave/GPL-3.0.txt" \
+  "$data_home/doc/mixweave/THIRD_PARTY_NOTICES.md" \
+  "$data_home/doc/mixweave/FIRA_CODE_LICENSE.txt" \
+  "$data_home/doc/mixweave/APACHE-2.0.txt" \
+  "$data_home/doc/mixweave/RNNOISE_BSD-3-Clause.txt" \
+  "$data_home/doc/mixweave/WEBRTC_SONORA_BSD-3-Clause.txt" \
+  "$data_home/doc/mixweave/TEST_AUDIO_LICENSES.md" \
+  "$data_home/doc/mixweave/AALTO_HRTF_ATTRIBUTION.md" \
   "$data_home/doc/sonux/GPL-3.0.txt" \
   "$data_home/doc/sonux/THIRD_PARTY_NOTICES.md" \
   "$data_home/doc/sonux/FIRA_CODE_LICENSE.txt" \
@@ -24,4 +36,4 @@ if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "$data_home/applications" >/dev/null 2>&1 || true
 fi
 
-printf 'Sonux was uninstalled. Settings in ~/.config/sonux were kept.\n'
+printf 'Mixweave was uninstalled. Settings in ~/.config/mixweave (or ~/.config/sonux if never launched since upgrading) were kept.\n'

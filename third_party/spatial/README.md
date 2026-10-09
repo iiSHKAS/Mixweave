@@ -1,6 +1,6 @@
-# Sonux spatial audio data
+# Mixweave spatial audio data
 
-Sonux embeds one audited Aalto University SOFA dataset for its production
+Mixweave embeds one audited Aalto University SOFA dataset for its production
 7.1-to-binaural renderer. No optional comparison engines or development
 binaries are included in this repository.
 
@@ -23,7 +23,7 @@ rigid-sphere model at 500 Hz.
 
 The libmysofa 1.3.4 validator returns error 10012 when opening this 2023
 dataset directly because it expresses `ReceiverPosition` in spherical rather
-than Cartesian coordinates. Sonux converts the loaded in-memory structure to
+than Cartesian coordinates. Mixweave converts the loaded in-memory structure to
 Cartesian coordinates and validates it before constructing the production
 lookup and interpolation tables. The tracked SOFA file itself is not changed.
 

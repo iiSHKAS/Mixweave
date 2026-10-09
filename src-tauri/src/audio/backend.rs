@@ -47,7 +47,7 @@ pub trait AudioBackend: Send + Sync {
     /// Move an app stream to a sink. An empty `sink_name` means "unassign":
     /// the stream is returned to the system default sink.
     fn move_stream_to_sink(&self, stream_index: u32, sink_name: &str) -> Result<(), SinkError>;
-    /// Publish Sonux's complete app-routing table for the session manager's
+    /// Publish Mixweave's complete app-routing table for the session manager's
     /// pre-link policy. `None` removes the metadata while the channel graph is
     /// unavailable; backends without native PipeWire metadata may ignore it.
     fn set_app_route_metadata(&self, _value: Option<&str>) -> Result<(), SinkError> {
@@ -58,7 +58,7 @@ pub trait AudioBackend: Send + Sync {
     /// command - commands are forbidden from calling pactl directly.
     fn set_app_volume(&self, stream_index: u32, volume_percent: u8) -> Result<(), SinkError>;
 
-    /// Route a channel's audio to a physical output device (Phase 4).
+    /// Route a channel's audio to a physical output device.
     /// `None` means "follow the system default output" (which also gives
     /// automatic failover when the device disappears). The native backend
     /// creates passive in-graph links; the pactl fallback uses
@@ -81,6 +81,29 @@ pub trait AudioBackend: Send + Sync {
     /// chain in the channel's output path). Native-only: the pactl fallback
     /// has no in-graph insert point, mirroring `set_mic_config`.
     fn set_channel_eq(&self, sink_name: &str, config: &EqConfig) -> Result<(), SinkError>;
+
+    /// Set a channel's independent "Stream" send level (0-150%): what
+    /// reaches the Streamer Mode output, entirely separate from
+    /// `set_sink_volume`'s "Personal" level (what the user hears). Requires
+    /// an in-graph insert point ahead of the channel's own volume, so it's
+    /// native-only like `set_channel_eq`.
+    fn set_channel_stream_volume(
+        &self,
+        _sink_name: &str,
+        _volume_percent: u8,
+    ) -> Result<(), SinkError> {
+        Err(SinkError::Config(
+            "Streamer Mode requires the native PipeWire backend".into(),
+        ))
+    }
+
+    /// Mute/unmute a channel's independent "Stream" send - see
+    /// `set_channel_stream_volume`.
+    fn set_channel_stream_mute(&self, _sink_name: &str, _muted: bool) -> Result<(), SinkError> {
+        Err(SinkError::Config(
+            "Streamer Mode requires the native PipeWire backend".into(),
+        ))
+    }
 
     /// Play a short broadband cue into one 7.1 speaker position.
     fn test_spatial_channel(&self, _sink_name: &str, _channel: &str) -> Result<(), SinkError> {
@@ -127,7 +150,7 @@ pub trait AudioBackend: Send + Sync {
     /// scoped, an extra passive link set). Native-only.
     fn set_monitor(&self, name: &str, enabled: bool) -> Result<(), SinkError>;
 
-    /// Hardware capture devices (microphones) for the Phase 3 mic chain.
+    /// Hardware capture devices (microphones) for the mic chain.
     fn list_input_devices(&self) -> Result<Vec<OutputDevice>, SinkError>;
 
     /// Current system defaults: (output sink name, input source name).
@@ -141,7 +164,7 @@ pub trait AudioBackend: Send + Sync {
     /// when no explicit input is chosen).
     fn set_default_input(&self, name: &str) -> Result<(), SinkError>;
 
-    /// Apply the Phase 3 mic chain configuration. Native-backend only; the
+    /// Apply the mic chain configuration. Native-backend only; the
     /// pactl fallback reports it as unsupported.
     fn set_mic_config(&self, config: &MicConfig) -> Result<(), SinkError>;
 

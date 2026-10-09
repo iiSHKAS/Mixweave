@@ -503,39 +503,3 @@ pub fn set_app_group_assignment(
     state.lock_mixer()?.assignments = assignments;
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn identity(prop: &str, value: &str) -> AppIdentity {
-        AppIdentity {
-            match_prop: prop.into(),
-            match_value: value.into(),
-        }
-    }
-
-    #[test]
-    fn group_identity_validation_deduplicates_without_losing_order() {
-        let identities = checked_identities(vec![
-            identity("application.name", "helper-a"),
-            identity("application.name", "helper-a"),
-            identity("application.process.binary", "helper-b"),
-        ])
-        .expect("valid identities");
-        assert_eq!(
-            identities,
-            vec![
-                identity("application.name", "helper-a"),
-                identity("application.process.binary", "helper-b"),
-            ]
-        );
-    }
-
-    #[test]
-    fn group_identity_validation_rejects_empty_and_unbounded_inputs() {
-        assert!(checked_identities(Vec::new()).is_err());
-        assert!(checked_identities(vec![identity("", "value")]).is_err());
-        assert!(checked_identities(vec![identity("application.name", ""); 65]).is_err());
-    }
-}

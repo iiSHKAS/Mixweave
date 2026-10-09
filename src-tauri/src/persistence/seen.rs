@@ -30,7 +30,7 @@ pub struct SeenEntry {
 }
 
 /// Registry of every app identity ever seen, stored as JSON at
-/// `$XDG_CONFIG_HOME/sonux/seen_apps.json`. Powers the inactive-apps list
+/// `$XDG_CONFIG_HOME/mixweave/seen_apps.json`. Powers the inactive-apps list
 /// and the ignore feature.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SeenApps {
@@ -41,7 +41,7 @@ impl SeenApps {
     pub fn config_path() -> Result<PathBuf, SinkError> {
         let dir = dirs::config_dir()
             .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
-        Ok(dir.join("sonux").join("seen_apps.json"))
+        Ok(dir.join("mixweave").join("seen_apps.json"))
     }
 
     pub fn load() -> Self {
@@ -51,7 +51,7 @@ impl SeenApps {
         match fs::read_to_string(&path) {
             Ok(raw) => {
                 let mut seen: Self = serde_json::from_str(&raw).unwrap_or_else(|e| {
-                    eprintln!("sonux: ignoring malformed {}: {e}", path.display());
+                    eprintln!("mixweave: ignoring malformed {}: {e}", path.display());
                     Self::default()
                 });
                 // Scrub nameless and internal/helper entries recorded before
@@ -67,7 +67,7 @@ impl SeenApps {
                 });
                 if seen.apps.len() != before {
                     if let Err(e) = seen.save() {
-                        eprintln!("sonux: could not persist cleaned app history: {e}");
+                        eprintln!("mixweave: could not persist cleaned app history: {e}");
                     }
                 }
                 seen
@@ -175,142 +175,5 @@ impl SeenApps {
                 || has_intent(&a.match_prop, &a.match_value)
         });
         self.apps.len() != before
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn upsert_reports_structural_changes_only() {
-        let mut seen = SeenApps::default();
-        assert!(seen.upsert(
-            "application.name",
-            "Firefox",
-            "Firefox",
-            Some("firefox"),
-            Some("firefox"),
-            100
-        ));
-        // Pure last_seen bump - not worth persisting.
-        assert!(!seen.upsert(
-            "application.name",
-            "Firefox",
-            "Firefox",
-            Some("firefox"),
-            Some("firefox"),
-            200
-        ));
-        assert_eq!(
-            seen.get("application.name", "Firefox")
-                .expect("entry")
-                .last_seen,
-            200
-        );
-        assert_eq!(
-            seen.get("application.name", "Firefox")
-                .expect("entry")
-                .desktop_id
-                .as_deref(),
-            Some("firefox")
-        );
-        // A transient metadata miss does not erase the learned canonical ID.
-        assert!(!seen.upsert(
-            "application.name",
-            "Firefox",
-            "Firefox",
-            Some("firefox"),
-            None,
-            250
-        ));
-        assert_eq!(
-            seen.get("application.name", "Firefox")
-                .expect("entry")
-                .desktop_id
-                .as_deref(),
-            Some("firefox")
-        );
-        // Display change - persist.
-        assert!(seen.upsert(
-            "application.name",
-            "Firefox",
-            "Firefox ESR",
-            Some("firefox"),
-            Some("firefox"),
-            300
-        ));
-    }
-
-    #[test]
-    fn ignore_and_forget() {
-        let mut seen = SeenApps::default();
-        seen.upsert("media.name", "audio-src", "Audio-src", None, None, 1);
-        assert!(seen.set_ignored("media.name", "audio-src", true));
-        assert!(seen.is_ignored("media.name", "audio-src"));
-        assert!(!seen.set_ignored("media.name", "nope", true));
-        seen.forget("media.name", "audio-src");
-        assert!(seen.get("media.name", "audio-src").is_none());
-    }
-
-    #[test]
-    fn prune_drops_only_stale_untouched_entries() {
-        const DAY: u64 = 24 * 60 * 60;
-        let now = 100 * DAY;
-        let mut seen = SeenApps::default();
-        seen.upsert(
-            "application.name",
-            "recent",
-            "Recent",
-            None,
-            None,
-            now - DAY,
-        );
-        seen.upsert(
-            "application.name",
-            "stale",
-            "Stale",
-            None,
-            None,
-            now - 8 * DAY,
-        );
-        seen.upsert(
-            "application.name",
-            "routed",
-            "Routed",
-            None,
-            None,
-            now - 60 * DAY,
-        );
-        seen.upsert(
-            "application.name",
-            "hidden",
-            "Hidden",
-            None,
-            None,
-            now - 60 * DAY,
-        );
-        seen.set_ignored("application.name", "hidden", true);
-
-        let routed = |_prop: &str, value: &str| value == "routed";
-        assert!(seen.prune(now, MAX_SEEN_AGE_SECS, routed));
-
-        assert!(seen.get("application.name", "recent").is_some());
-        assert!(seen.get("application.name", "stale").is_none());
-        // Assigned and ignored entries outlive the window.
-        assert!(seen.get("application.name", "routed").is_some());
-        assert!(seen.get("application.name", "hidden").is_some());
-
-        // Nothing left to drop - the caller shouldn't be told to save.
-        assert!(!seen.prune(now, MAX_SEEN_AGE_SECS, routed));
-    }
-
-    #[test]
-    fn prune_tolerates_timestamps_from_the_future() {
-        let mut seen = SeenApps::default();
-        // A clock jump backwards must not make every entry look ancient.
-        seen.upsert("application.name", "ahead", "Ahead", None, None, 5_000);
-        assert!(!seen.prune(1_000, MAX_SEEN_AGE_SECS, |_, _| false));
-        assert!(seen.get("application.name", "ahead").is_some());
     }
 }

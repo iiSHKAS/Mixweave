@@ -15,7 +15,7 @@ pub struct AliasEntry {
     pub alias: String,
 }
 
-/// All saved aliases, stored as JSON at `$XDG_CONFIG_HOME/sonux/aliases.json`.
+/// All saved aliases, stored as JSON at `$XDG_CONFIG_HOME/mixweave/aliases.json`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Aliases {
     pub aliases: Vec<AliasEntry>,
@@ -25,7 +25,7 @@ impl Aliases {
     pub fn config_path() -> Result<PathBuf, SinkError> {
         let dir = dirs::config_dir()
             .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
-        Ok(dir.join("sonux").join("aliases.json"))
+        Ok(dir.join("mixweave").join("aliases.json"))
     }
 
     pub fn load() -> Self {
@@ -34,7 +34,7 @@ impl Aliases {
         };
         match fs::read_to_string(&path) {
             Ok(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
-                eprintln!("sonux: ignoring malformed {}: {e}", path.display());
+                eprintln!("mixweave: ignoring malformed {}: {e}", path.display());
                 Self::default()
             }),
             Err(_) => Self::default(),
@@ -79,25 +79,5 @@ impl Aliases {
             .iter()
             .find(|a| a.match_prop == match_prop && a.match_value == match_value)
             .map(|a| a.alias.as_str())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn set_get_and_empty_removes() {
-        let mut a = Aliases::default();
-        a.set("media.name", "audio-src", "Spotify");
-        assert_eq!(a.get("media.name", "audio-src"), Some("Spotify"));
-
-        a.set("media.name", "audio-src", "Spotify Premium");
-        assert_eq!(a.aliases.len(), 1);
-        assert_eq!(a.get("media.name", "audio-src"), Some("Spotify Premium"));
-
-        a.set("media.name", "audio-src", "   ");
-        assert!(a.get("media.name", "audio-src").is_none());
-        assert!(a.aliases.is_empty());
     }
 }

@@ -10,7 +10,7 @@ const SLOW_POLL_INTERVAL_MS = 2000;
  * Boots the audio layer: creates the virtual sinks on mount, polls the app
  * stream/channel controls quickly while visible, polls slower device/history
  * state every 2s, subscribes to live VU levels, and auto-loads profiles bound
- * to newly connected devices (Phase 5). A native worker keeps application
+ * to newly connected devices. A native worker keeps application
  * discovery and auto-routing alive while the window is hidden in the tray.
  */
 export function useAudio() {
@@ -75,7 +75,7 @@ export function useAudio() {
       }
     };
     // Pause polling while hidden in the tray - the product's dominant idle
-    // state - instead of round-tripping forever (TD-009).
+    // state - instead of round-tripping forever.
     const onVisibility = () => (document.hidden ? stop() : start());
     if (!document.hidden) start();
     document.addEventListener("visibilitychange", onVisibility);

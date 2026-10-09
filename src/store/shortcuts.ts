@@ -75,8 +75,9 @@ export function shortcutFromKeyboardEvent(event: ShortcutKeyboardEvent): string 
   return [...modifiers, key].join("+");
 }
 
-const STORAGE_KEY = "sonux-global-shortcuts";
-const LEGACY_STORAGE_KEY = "sink-global-shortcuts";
+const STORAGE_KEY = "mixweave-global-shortcuts";
+const LEGACY_STORAGE_KEY = "sonux-global-shortcuts";
+const SINK_STORAGE_KEY = "sink-global-shortcuts";
 
 interface StoredShortcutSettings {
   enabled: boolean;
@@ -85,7 +86,7 @@ interface StoredShortcutSettings {
 
 function readSettings(): StoredShortcutSettings {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY) ?? localStorage.getItem(SINK_STORAGE_KEY);
     const saved = JSON.parse(raw ?? "null") as Partial<StoredShortcutSettings> | null;
     const readBinding = (action: ShortcutAction) => {
       const binding = saved?.bindings?.[action];

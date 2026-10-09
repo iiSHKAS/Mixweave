@@ -14,15 +14,16 @@ export function handleSliderKey(
   { min, max, step, value, onChange }: SliderKeys,
 ) {
   const largeStep = step * 10;
+  const arrowStep = event.shiftKey ? largeStep : step;
   let next: number | undefined;
   switch (event.key) {
     case "ArrowRight":
     case "ArrowUp":
-      next = value + step;
+      next = value + arrowStep;
       break;
     case "ArrowLeft":
     case "ArrowDown":
-      next = value - step;
+      next = value - arrowStep;
       break;
     case "PageUp":
       next = value + largeStep;

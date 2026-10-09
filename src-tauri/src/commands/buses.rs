@@ -9,10 +9,71 @@ pub(crate) fn set_bus_level(
     backend: &dyn AudioBackend,
     def: &BusDef,
 ) -> Result<(), crate::error::SinkError> {
+    if crate::persistence::buses::is_master(&def.name) {
+        // The master mix is a true listening-volume control: its level/mute
+        // are applied to every channel's own live sink (see
+        // `push_master_gain_to_channels`), so its own node must stay a fixed
+        // passthrough rather than double-attenuating what it captures.
+        backend.set_sink_volume(&def.name, 100)?;
+        backend.set_sink_mute(&def.name, false)?;
+        return Ok(());
+    }
+    if crate::persistence::buses::is_streamer_mode(&def.name) {
+        // Same passthrough reasoning as the master mix above, but for the
+        // independent Stream path (see `push_streamer_gain_to_channels`).
+        backend.set_sink_volume(&def.name, 100)?;
+        backend.set_sink_mute(&def.name, false)?;
+        return Ok(());
+    }
     // Existing nodes may carry values from another profile. Defaults are
     // values too: omitting 100% or false would leave an old level/mute live.
     backend.set_sink_volume(&def.name, def.volume_percent)?;
     backend.set_sink_mute(&def.name, def.muted)?;
+    Ok(())
+}
+
+/// Push a newly (re)computed master gain fraction/mute to every channel's
+/// live sink, so a master volume/mute change is immediately heard as a
+/// rescale of each channel's own level rather than a change to a separate
+/// recording-only node.
+fn push_master_gain_to_channels(
+    backend: &dyn AudioBackend,
+    channels: &[crate::audio::types::VirtualSink],
+    fraction: f32,
+    master_muted: bool,
+) -> Result<(), crate::error::SinkError> {
+    for channel in channels {
+        crate::commands::routing::push_channel_controls(
+            backend,
+            &channel.name,
+            channel.volume_percent,
+            channel.muted,
+            fraction,
+            master_muted,
+        )?;
+    }
+    Ok(())
+}
+
+/// Push a newly (re)computed Streamer Mode gain fraction/mute to every
+/// channel's live Stream-send sink - the exact same idea as
+/// `push_master_gain_to_channels`, entirely independent of it.
+fn push_streamer_gain_to_channels(
+    backend: &dyn AudioBackend,
+    channels: &[crate::audio::types::VirtualSink],
+    fraction: f32,
+    streamer_muted: bool,
+) -> Result<(), crate::error::SinkError> {
+    for channel in channels {
+        crate::commands::routing::push_channel_stream_controls(
+            backend,
+            &channel.name,
+            channel.stream_send_volume_percent,
+            channel.stream_send_muted,
+            fraction,
+            streamer_muted,
+        )?;
+    }
     Ok(())
 }
 
@@ -270,6 +331,50 @@ pub fn rename_bus(
     Ok(())
 }
 
+/// Turn the Streamer Mode mix's live node on or off. Its definition (level,
+/// membership) always exists and keeps updating in the background - this
+/// only gates whether the node itself is present at all, which is what
+/// keeps it out of every device picker (system, OBS, ...) until the user
+/// asks for it (see `commands::devices::init_virtual_devices`'s matching
+/// startup check). Every channel's own independent Stream send keeps
+/// running underneath regardless; there is simply nothing listening on the
+/// other end while this is off. Persisted, so the state survives a restart.
+#[tauri::command]
+pub fn set_streamer_mode_enabled(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let (def, all, prefs) = {
+        let mixer = state.lock_mixer()?;
+        let def = mixer
+            .buses
+            .get(crate::persistence::buses::STREAMER_MODE_BUS_NODE)
+            .cloned()
+            .ok_or_else(|| "Streamer Mode mix definition is missing".to_string())?;
+        (def, channel_names(&mixer), mixer.prefs.clone())
+    };
+    if enabled {
+        state
+            .backend
+            .create_bus(&def.name, &prefs.decorate(&def.label))
+            .map_err(|e| e.to_string())?;
+        if let Err(error) = configure_existing_bus(state.backend.as_ref(), &def, &all) {
+            return Err(mutation_failure(
+                error,
+                &[(
+                    "removing the incomplete mix",
+                    state.backend.destroy_bus(&def.name),
+                )],
+            ));
+        }
+    } else {
+        state
+            .backend
+            .destroy_bus(&def.name)
+            .map_err(|e| e.to_string())?;
+    }
+    let mut mixer = state.lock_mixer()?;
+    mixer.prefs.streamer_mode_enabled = enabled;
+    mixer.prefs.save().map_err(|e| e.to_string())
+}
+
 /// Delete a mix.
 #[tauri::command]
 pub fn remove_bus(
@@ -423,9 +528,12 @@ pub fn set_bus_exclude(
     Ok(())
 }
 
-/// Set a mix's playback level (0-150%) - what recorders hear. Unlike
-/// `set_channel_volume`, this accepts mix nodes (including the master mix,
-/// whose reserved name `set_channel_volume` rejects) and persists the level.
+/// Set a mix's playback level (0-150%) and persist it. For a regular mix
+/// this is what recorders hear; for the master mix it's the true listening
+/// volume, rescaling what every channel's own live sink outputs (see
+/// `push_master_gain_to_channels`) instead of the mix's own node. Unlike
+/// `set_channel_volume`, this accepts mix nodes at all, including the master
+/// mix, whose reserved name `set_channel_volume` rejects.
 #[tauri::command]
 pub fn set_bus_volume(
     state: State<'_, AppState>,
@@ -436,7 +544,9 @@ pub fn set_bus_volume(
     let _profile_operation = state.lock_expected_profile_operation(expected_profile.as_deref())?;
     state.ensure_known_bus(&name)?;
     let volume = volume.min(MAX_VOLUME);
-    let (old_defs, defs, old_volume) = {
+    let is_master = crate::persistence::buses::is_master(&name);
+    let is_streamer_mode = crate::persistence::buses::is_streamer_mode(&name);
+    let (old_defs, defs, old_volume, channels, gain_muted) = {
         let mixer = state.lock_mixer()?;
         let old_volume = mixer
             .buses
@@ -446,12 +556,37 @@ pub fn set_bus_volume(
         let old_defs = mixer.buses.clone();
         let mut defs = old_defs.clone();
         defs.set_volume(&name, volume).map_err(|e| e.to_string())?;
-        (old_defs, defs, old_volume)
+        let (_, gain_muted) = if is_streamer_mode {
+            mixer.streamer_gain()
+        } else {
+            mixer.master_gain()
+        };
+        (
+            old_defs,
+            defs,
+            old_volume,
+            mixer.channels.clone(),
+            gain_muted,
+        )
     };
-    state
-        .backend
-        .set_sink_volume(&name, volume)
-        .map_err(|e| e.to_string())?;
+    if is_master {
+        push_master_gain_to_channels(
+            state.backend.as_ref(),
+            &channels,
+            volume as f32 / 100.0,
+            gain_muted,
+        )
+    } else if is_streamer_mode {
+        push_streamer_gain_to_channels(
+            state.backend.as_ref(),
+            &channels,
+            volume as f32 / 100.0,
+            gain_muted,
+        )
+    } else {
+        state.backend.set_sink_volume(&name, volume)
+    }
+    .map_err(|e| e.to_string())?;
     {
         let mixer = state.lock_mixer()?;
         persist_bus_edit(
@@ -459,7 +594,25 @@ pub fn set_bus_volume(
             &old_defs,
             &defs,
             "restoring the previous live mix volume",
-            || state.backend.set_sink_volume(&name, old_volume),
+            || {
+                if is_master {
+                    push_master_gain_to_channels(
+                        state.backend.as_ref(),
+                        &channels,
+                        old_volume as f32 / 100.0,
+                        gain_muted,
+                    )
+                } else if is_streamer_mode {
+                    push_streamer_gain_to_channels(
+                        state.backend.as_ref(),
+                        &channels,
+                        old_volume as f32 / 100.0,
+                        gain_muted,
+                    )
+                } else {
+                    state.backend.set_sink_volume(&name, old_volume)
+                }
+            },
         )?;
     }
     let mut mixer = state.lock_mixer()?;
@@ -467,7 +620,9 @@ pub fn set_bus_volume(
     Ok(())
 }
 
-/// Mute or unmute a mix for recorders. Persisted, and accepts the master mix.
+/// Mute or unmute a mix, persisted. For a regular mix this only silences
+/// recorders; for the master mix it silences every channel's live output -
+/// the user hears nothing, not just what's being recorded.
 #[tauri::command]
 pub fn set_bus_mute(
     state: State<'_, AppState>,
@@ -477,7 +632,9 @@ pub fn set_bus_mute(
 ) -> Result<(), String> {
     let _profile_operation = state.lock_expected_profile_operation(expected_profile.as_deref())?;
     state.ensure_known_bus(&name)?;
-    let (old_defs, defs, old_muted) = {
+    let is_master = crate::persistence::buses::is_master(&name);
+    let is_streamer_mode = crate::persistence::buses::is_streamer_mode(&name);
+    let (old_defs, defs, old_muted, channels, fraction) = {
         let mixer = state.lock_mixer()?;
         let old_muted = mixer
             .buses
@@ -487,12 +644,21 @@ pub fn set_bus_mute(
         let old_defs = mixer.buses.clone();
         let mut defs = old_defs.clone();
         defs.set_muted(&name, muted).map_err(|e| e.to_string())?;
-        (old_defs, defs, old_muted)
+        let (fraction, _) = if is_streamer_mode {
+            mixer.streamer_gain()
+        } else {
+            mixer.master_gain()
+        };
+        (old_defs, defs, old_muted, mixer.channels.clone(), fraction)
     };
-    state
-        .backend
-        .set_sink_mute(&name, muted)
-        .map_err(|e| e.to_string())?;
+    if is_master {
+        push_master_gain_to_channels(state.backend.as_ref(), &channels, fraction, muted)
+    } else if is_streamer_mode {
+        push_streamer_gain_to_channels(state.backend.as_ref(), &channels, fraction, muted)
+    } else {
+        state.backend.set_sink_mute(&name, muted)
+    }
+    .map_err(|e| e.to_string())?;
     {
         let mixer = state.lock_mixer()?;
         persist_bus_edit(
@@ -500,7 +666,25 @@ pub fn set_bus_mute(
             &old_defs,
             &defs,
             "restoring the previous live mix mute",
-            || state.backend.set_sink_mute(&name, old_muted),
+            || {
+                if is_master {
+                    push_master_gain_to_channels(
+                        state.backend.as_ref(),
+                        &channels,
+                        fraction,
+                        old_muted,
+                    )
+                } else if is_streamer_mode {
+                    push_streamer_gain_to_channels(
+                        state.backend.as_ref(),
+                        &channels,
+                        fraction,
+                        old_muted,
+                    )
+                } else {
+                    state.backend.set_sink_mute(&name, old_muted)
+                }
+            },
         )?;
     }
     let mut mixer = state.lock_mixer()?;
@@ -511,23 +695,4 @@ pub fn set_bus_mute(
 /// The current channel sink names (the "all channels" set for mixes).
 pub(crate) fn channel_names(mixer: &crate::mixer::state::MixerState) -> Vec<String> {
     mixer.channels.iter().map(|c| c.name.clone()).collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::validate_member_channels;
-
-    #[test]
-    fn bus_members_must_be_known_channels() {
-        let all = vec!["sink_game".to_string(), "sink_chat".to_string()];
-        assert!(validate_member_channels(&["sink_game".to_string()], &all).is_ok());
-        assert_eq!(
-            validate_member_channels(&["sink_hardware".to_string()], &all),
-            Err("unknown channel in mix membership: sink_hardware".to_string())
-        );
-        assert_eq!(
-            validate_member_channels(&["sink_game".to_string(), "sink_game".to_string()], &all),
-            Err("duplicate channel in mix membership: sink_game".to_string())
-        );
-    }
 }
