@@ -1,7 +1,7 @@
 [package]
 name = "mixweave"
 default-run = "mixweave"
-version = "0.5.1"
+version = "0.5.2"
 description = "Linux-native audio routing and mixing for PipeWire"
 edition = "2021"
 rust-version = "1.88"
@@ -35,6 +35,12 @@ nnnoiseless = { version = "0.5", default-features = false }
 pipewire = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-rs", rev = "v0.10.0", features = ["v0_3_49"] }
 tauri-plugin-updater = "2"
 tempfile = "3"
-tokio = { version = "1.53.1", features = ["time", "sync", "macros"] }
+tokio = { version = "1.53.1", features = ["time", "sync", "macros", "net", "rt"] }
 tauri-plugin-notification = "2"
 
+
+# Authenticated local audio control server.
+axum = "0.8"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

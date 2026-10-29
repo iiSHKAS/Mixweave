@@ -19,8 +19,8 @@ import { restartApplication, useGlobalShortcuts } from "./hooks/useGlobalShortcu
 import { takeRestoreWarning } from "./lib/restoreWarning";
 import { useI18n, type TranslationKey } from "./i18n";
 import { useMixerStore } from "./store/mixer";
-import { allowBoostWhereInUse, MASTER_STRIP_IDS, useVolumeRange } from "./store/volumeRange";
-import { MASTER_BUS, STREAMER_MODE_BUS } from "./types";
+import { MASTER_STRIP_IDS, useVolumeRange } from "./store/volumeRange";
+import { MASTER_BUS } from "./types";
 
 const SIDE_NAV = [
   { id: "mixer", icon: "graphic_eq", label: "navigation.mixer" },
@@ -59,7 +59,6 @@ export default function App() {
   const buses = useMixerStore((s) => s.buses);
   useEffect(() => {
     if (channels.length === 0) return;
-    const streamerBus = buses.find((bus) => bus.name === STREAMER_MODE_BUS);
     // Master is capped at 100 % unless amplification was chosen for it.
     const masterBoost = useVolumeRange.getState().overrides[MASTER_BUS] === true;
     if (!masterBoost) {
@@ -69,16 +68,6 @@ export default function App() {
         }
       }
     }
-    allowBoostWhereInUse([
-      ...channels.map((channel) => ({ id: channel.name, levels: [channel.volume_percent, channel.stream_send_volume_percent] })),
-      ...buses
-        .filter((bus) => bus.name !== STREAMER_MODE_BUS)
-        .map((bus) => ({
-          id: bus.name,
-          levels: bus.name === MASTER_BUS && streamerBus ? [bus.volume_percent, streamerBus.volume_percent] : [bus.volume_percent],
-        })),
-      ...micConfigs.map((mic) => ({ id: mic.node_name, levels: [mic.gain_percent, mic.stream_send_gain_percent] })),
-    ]);
   }, [buses, channels, micConfigs]);
 
   const selectedChannelName = nav.startsWith("channel:") ? nav.slice("channel:".length) : null;

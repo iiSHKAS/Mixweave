@@ -78,6 +78,15 @@ pub struct Prefs {
     /// underneath either way (see `commands::buses::set_streamer_mode_enabled`).
     #[serde(default)]
     pub streamer_mode_enabled: bool,
+    /// Show the volume popup overlay (shortcut and local API changes).
+    #[serde(default = "default_true")]
+    pub overlay_enabled: bool,
+    /// Run the local HTTP control API.
+    #[serde(default = "default_true")]
+    pub local_api_enabled: bool,
+    /// Persisted per-strip amplification choice; None means legacy UI migration pending.
+    #[serde(default)]
+    pub volume_range_overrides: Option<std::collections::BTreeMap<String, bool>>,
 }
 
 fn default_true() -> bool {
@@ -97,6 +106,9 @@ impl Default for Prefs {
             start_minimized: false,
             multiple_mics: false,
             streamer_mode_enabled: false,
+            overlay_enabled: true,
+            local_api_enabled: true,
+            volume_range_overrides: None,
         }
     }
 }

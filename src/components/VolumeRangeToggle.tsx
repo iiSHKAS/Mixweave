@@ -39,8 +39,9 @@ export function VolumeRangeToggle({ id, compact = false }: Readonly<{ id: string
   const setAllowed = useVolumeRange((state) => state.setAllowed);
   const hardMax = mic ? MAX_MIC_GAIN : MAX_VOLUME;
   const toggle = () => {
-    setAllowed(id, !allowed);
-    if (allowed) clampToUnity(id);
+    void setAllowed(id, !allowed).then(() => {
+      if (allowed) clampToUnity(id);
+    }).catch((error: unknown) => useMixerStore.setState({ error: String(error) }));
   };
   if (compact) {
     return (

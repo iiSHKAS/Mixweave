@@ -209,6 +209,12 @@ impl LiveConfigSnapshot {
                 .map(|channel| channel.name.clone())
                 .collect::<Vec<_>>();
             for bus in &self.buses.buses {
+                // Match startup: Streamer Mode's node does not exist while disabled.
+                if crate::persistence::buses::is_streamer_mode(&bus.name)
+                    && !prefs.streamer_mode_enabled
+                {
+                    continue;
+                }
                 record(
                     format!("recreate mix {}", bus.name),
                     state
@@ -768,6 +774,12 @@ fn apply_profile_locked(
                 }
             }
             for bus in &target_buses.buses {
+                // Match startup: Streamer Mode's node does not exist while disabled.
+                if crate::persistence::buses::is_streamer_mode(&bus.name)
+                    && !prefs.streamer_mode_enabled
+                {
+                    continue;
+                }
                 if current_buses.get(&bus.name).is_none() {
                     state
                         .backend

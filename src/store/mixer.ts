@@ -1,3 +1,4 @@
+import { initializeVolumeRanges } from "./volumeRange";
 import { create } from "zustand";
 import { clearPublishedLevels } from "../lib/liveMeters";
 import { invoke } from "@tauri-apps/api/core";
@@ -96,6 +97,8 @@ interface StartupPrefs {
   balance_a: string | null;
   balance_b: string | null;
   show_balance: boolean;
+  overlay_enabled: boolean;
+  local_api_enabled: boolean;
   multiple_mics: boolean;
   meter_mode: MeterMode;
   streamer_mode_enabled: boolean;
@@ -246,6 +249,12 @@ interface MixerStore {
   setBalanceChannels: (a: string | null, b: string | null) => Promise<void>;
   showBalance: boolean;
   setBalanceVisible: (visible: boolean) => Promise<void>;
+  /** Volume popup overlay on/off (persisted preference). */
+  overlayEnabled: boolean;
+  setOverlayEnabled: (enabled: boolean) => Promise<void>;
+  /** Local HTTP control API on/off (persisted preference). */
+  localApiEnabled: boolean;
+  setLocalApiEnabled: (enabled: boolean) => Promise<void>;
 
   /** Create the virtual sinks and load initial state. */
   initialize: () => Promise<void>;
@@ -318,6 +327,8 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
   balanceA: null,
   balanceB: null,
   showBalance: true,
+  overlayEnabled: true,
+  localApiEnabled: true,
 
   setBalanceChannels: async (a, b) => {
     const version = ++balanceChannelsVersion;
@@ -361,6 +372,26 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }
   },
 
+  setOverlayEnabled: async (enabled) => {
+    const previous = get().overlayEnabled;
+    set({ overlayEnabled: enabled });
+    try {
+      await invoke("set_overlay_enabled", { enabled });
+    } catch (e) {
+      set({ overlayEnabled: previous, error: String(e) });
+    }
+  },
+
+  setLocalApiEnabled: async (enabled) => {
+    const previous = get().localApiEnabled;
+    set({ localApiEnabled: enabled });
+    try {
+      await invoke("set_local_api_enabled", { enabled });
+    } catch (e) {
+      set({ localApiEnabled: previous, error: String(e) });
+    }
+  },
+
   finishOnboarding: async (blank) => {
     const replay = get().onboardingReplay;
     set({ showOnboarding: false, onboardingReplay: false });
@@ -388,6 +419,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     if (get().initialized || get().initializing) return;
     set({ initializing: true });
     try {
+      await initializeVolumeRanges();
       await invoke("init_virtual_devices");
       set({ initialized: true, initializing: false, error: null });
       await get().synchronizeStartupState();
@@ -429,6 +461,8 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
         balanceA: prefs.balance_a,
         balanceB: prefs.balance_b,
         showBalance: prefs.show_balance,
+        overlayEnabled: prefs.overlay_enabled ?? true,
+        localApiEnabled: prefs.local_api_enabled ?? true,
         multipleMics: prefs.multiple_mics,
         meterMode: prefs.meter_mode,
         showOnboarding: current.onboardingReplay ? current.showOnboarding : !prefs.onboarded,
@@ -860,9 +894,23 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     cancelPendingInvokes();
     const version = ++profileRefreshVersion;
     try {
-      const snapshot = await readProfileSnapshot(get().selectedMicNode);
+      const [snapshot, prefs] = await Promise.all([
+        readProfileSnapshot(get().selectedMicNode),
+        invoke<StartupPrefs>("get_prefs"),
+      ]);
       if (version !== profileRefreshVersion) return;
-      set(snapshot);
+      useStreamerModeStore.getState().hydrate(prefs.streamer_mode_enabled);
+      if (prefs.meter_mode === "off") clearPublishedLevels();
+      set({
+        ...snapshot,
+        balanceA: prefs.balance_a,
+        balanceB: prefs.balance_b,
+        showBalance: prefs.show_balance,
+        overlayEnabled: prefs.overlay_enabled ?? true,
+        localApiEnabled: prefs.local_api_enabled ?? true,
+        multipleMics: prefs.multiple_mics,
+        meterMode: prefs.meter_mode,
+      });
     } catch (e) {
       if (version === profileRefreshVersion) set({ error: String(e) });
     }

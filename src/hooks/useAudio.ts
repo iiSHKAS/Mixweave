@@ -114,4 +114,18 @@ export function useAudio() {
       void unlisten.then((fn) => fn());
     };
   }, [onProfileChanged]);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unlisten = listen("local-api-changed", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const store = useMixerStore.getState();
+        void store.onProfileChanged("");
+      }, 100);
+    });
+    return () => {
+      clearTimeout(timer);
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
 }

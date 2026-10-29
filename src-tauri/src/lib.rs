@@ -5,6 +5,7 @@ mod gnome_osd_extension;
 mod language_packs;
 mod launch_path;
 mod mixer;
+mod local_api;
 mod overlay;
 mod persistence;
 mod profile_automation;
@@ -244,11 +245,14 @@ pub fn run() {
             commands::settings::set_default_output,
             commands::settings::set_default_input,
             commands::settings::get_prefs,
+            commands::settings::sync_volume_ranges,
             commands::settings::set_device_label_style,
             commands::settings::set_meter_mode,
             commands::settings::set_onboarded,
             commands::settings::set_balance_channels,
             commands::settings::set_balance_visible,
+            commands::settings::set_overlay_enabled,
+            commands::settings::set_local_api_enabled,
             commands::settings::set_start_minimized,
             commands::settings::set_multiple_mics,
             commands::settings::reset_app,
@@ -262,6 +266,7 @@ pub fn run() {
         ])
         .setup(move |app| {
             build_tray(app)?;
+            local_api::start(app.handle().clone());
             updates::start(app.handle().clone());
             app.state::<profile_automation::ProfileAutomationRuntime>()
                 .start(app.handle().clone());

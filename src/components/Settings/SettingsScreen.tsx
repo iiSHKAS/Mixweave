@@ -316,6 +316,10 @@ export function SettingsScreen() {
   const replayOnboarding = useMixerStore((s) => s.replayOnboarding);
   const showBalance = useMixerStore((s) => s.showBalance);
   const setBalanceVisible = useMixerStore((s) => s.setBalanceVisible);
+  const overlayEnabled = useMixerStore((s) => s.overlayEnabled);
+  const setOverlayEnabled = useMixerStore((s) => s.setOverlayEnabled);
+  const localApiEnabled = useMixerStore((s) => s.localApiEnabled);
+  const setLocalApiEnabled = useMixerStore((s) => s.setLocalApiEnabled);
   const meterMode = useMixerStore((s) => s.meterMode);
   const setMeterMode = useMixerStore((s) => s.setMeterMode);
   const shortcutsEnabled = useShortcutSettings((s) => s.enabled);
@@ -606,6 +610,13 @@ export function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title={t("settings.overlay.section")} preserve>
+          <SettingRow
+            icon="notifications_active"
+            title={t("settings.overlay.enable.title")}
+            description={t("settings.overlay.enable.description")}
+          >
+            <Toggle on={overlayEnabled} onClick={() => void setOverlayEnabled(!overlayEnabled)} />
+          </SettingRow>
           <SettingRow icon="notifications_active" title={t("settings.osd.title")} description={t("settings.osd.description")} stacked>
             <div className="theme-picker osd-picker" role="radiogroup" aria-label={t("settings.osd.title")}>
               {OSD_STYLES.map((option, index) => (
@@ -729,6 +740,13 @@ export function SettingsScreen() {
             description={t("settings.balance.description")}
           >
             <Toggle on={showBalance} onClick={() => void setBalanceVisible(!showBalance)} />
+          </SettingRow>
+          <SettingRow
+            icon="api"
+            title={t("settings.localApi.title")}
+            description={t("settings.localApi.description")}
+          >
+            <Toggle on={localApiEnabled} onClick={() => void setLocalApiEnabled(!localApiEnabled)} />
           </SettingRow>
         </SettingsSection>
 

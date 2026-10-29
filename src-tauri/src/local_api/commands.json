@@ -1,0 +1,1383 @@
+[
+  {
+    "method": "get_seen_apps",
+    "group": "apps",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "set_app_group_ignored",
+    "group": "apps",
+    "read_only": false,
+    "params": [
+      {
+        "name": "identities",
+        "type": "Vec<AppIdentity>",
+        "required": true
+      },
+      {
+        "name": "ignored",
+        "type": "bool",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "set_app_ignored",
+    "group": "apps",
+    "read_only": false,
+    "params": [
+      {
+        "name": "match_prop",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "match_value",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "ignored",
+        "type": "bool",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "forget_app",
+    "group": "apps",
+    "read_only": false,
+    "params": [
+      {
+        "name": "match_prop",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "match_value",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "forget_app_group",
+    "group": "apps",
+    "read_only": false,
+    "params": [
+      {
+        "name": "identities",
+        "type": "Vec<AppIdentity>",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_app_assignment",
+    "group": "apps",
+    "read_only": false,
+    "params": [
+      {
+        "name": "match_prop",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "match_value",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_app_group_assignment",
+    "group": "apps",
+    "read_only": false,
+    "params": [
+      {
+        "name": "identities",
+        "type": "Vec<AppIdentity>",
+        "required": true
+      },
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "list_buses",
+    "group": "buses",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "add_bus",
+    "group": "buses",
+    "read_only": false,
+    "params": [
+      {
+        "name": "label",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "rename_bus",
+    "group": "buses",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "label",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_streamer_mode_enabled",
+    "group": "buses",
+    "read_only": false,
+    "params": [
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "remove_bus",
+    "group": "buses",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_bus_members",
+    "group": "buses",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "channels",
+        "type": "Vec<String>",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_bus_exclude",
+    "group": "buses",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "exclude",
+        "type": "bool",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_bus_volume",
+    "group": "buses",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "volume",
+        "type": "u8",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_bus_mute",
+    "group": "buses",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "muted",
+        "type": "bool",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "add_channel",
+    "group": "channels",
+    "read_only": false,
+    "params": [
+      {
+        "name": "label",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "icon",
+        "type": "Option<String>",
+        "required": false
+      },
+      {
+        "name": "spatial",
+        "type": "bool",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "reorder_channels",
+    "group": "channels",
+    "read_only": false,
+    "params": [
+      {
+        "name": "order",
+        "type": "Vec<String>",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_channel_icon",
+    "group": "channels",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "icon",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "rename_channel",
+    "group": "channels",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "label",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "remove_channel",
+    "group": "channels",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "get_channel_test_status",
+    "group": "channel_test",
+    "read_only": true,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "start_channel_test_recording",
+    "group": "channel_test",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "stop_channel_test_recording",
+    "group": "channel_test",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "play_channel_test_loop",
+    "group": "channel_test",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "stop_channel_test_playback",
+    "group": "channel_test",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "play_channel_test_sample",
+    "group": "channel_test",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "sample",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "get_virtual_devices",
+    "group": "devices",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "get_app_streams",
+    "group": "devices",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "get_output_devices",
+    "group": "devices",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "get_channel_outputs",
+    "group": "devices",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "get_resolved_outputs",
+    "group": "devices",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "get_channel_failover",
+    "group": "devices",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "set_channel_output",
+    "group": "devices",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "output_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_channel_failover",
+    "group": "devices",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "get_channel_eq_configs",
+    "group": "eq",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "set_channel_eq",
+    "group": "eq",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "config",
+        "type": "EqConfig",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "test_spatial_channel",
+    "group": "eq",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "channel",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "list_eq_presets",
+    "group": "eq",
+    "read_only": true,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "save_user_eq_preset",
+    "group": "eq",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "config",
+        "type": "EqConfig",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "delete_user_eq_preset",
+    "group": "eq",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "export_channel_eq",
+    "group": "eq",
+    "read_only": true,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "import_eq_config",
+    "group": "eq",
+    "read_only": true,
+    "params": [
+      {
+        "name": "text",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "get_hardware_devices",
+    "group": "hardware",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "set_hardware_volume",
+    "group": "hardware",
+    "read_only": false,
+    "params": [
+      {
+        "name": "kind",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "percent",
+        "type": "u8",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "set_hardware_mute",
+    "group": "hardware",
+    "read_only": false,
+    "params": [
+      {
+        "name": "kind",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "muted",
+        "type": "bool",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "get_mic_config",
+    "group": "mic",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "get_mic_configs",
+    "group": "mic",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "set_mic_config",
+    "group": "mic",
+    "read_only": false,
+    "params": [
+      {
+        "name": "config",
+        "type": "MicConfig",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "add_mic_channel",
+    "group": "mic",
+    "read_only": false,
+    "params": [
+      {
+        "name": "label",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "input_device",
+        "type": "Option<String>",
+        "required": false
+      },
+      {
+        "name": "copy_from",
+        "type": "Option<String>",
+        "required": false
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "remove_mic_channel",
+    "group": "mic",
+    "read_only": false,
+    "params": [
+      {
+        "name": "node_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "reorder_mic_channels",
+    "group": "mic",
+    "read_only": false,
+    "params": [
+      {
+        "name": "order",
+        "type": "Vec<String>",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "get_input_devices",
+    "group": "mic",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "get_mic_clients",
+    "group": "mic",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "get_mic_test_status",
+    "group": "mic",
+    "read_only": true,
+    "params": [
+      {
+        "name": "node_name",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "start_mic_test_recording",
+    "group": "mic",
+    "read_only": false,
+    "params": [
+      {
+        "name": "node_name",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "stop_mic_test_recording",
+    "group": "mic",
+    "read_only": false,
+    "params": [
+      {
+        "name": "node_name",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "play_mic_test_loop",
+    "group": "mic",
+    "read_only": false,
+    "params": [
+      {
+        "name": "node_name",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "stop_mic_test_playback",
+    "group": "mic",
+    "read_only": false,
+    "params": [
+      {
+        "name": "node_name",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "list_mic_presets",
+    "group": "mic",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "save_mic_preset",
+    "group": "mic",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "config",
+        "type": "MicConfig",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "delete_mic_preset",
+    "group": "mic",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "list_profiles",
+    "group": "profiles",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "get_profile_snapshot",
+    "group": "profiles",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "get_profile_content",
+    "group": "profiles",
+    "read_only": true,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "get_active_profile",
+    "group": "profiles",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "set_profile_trigger",
+    "group": "profiles",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "device",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "load_profile",
+    "group": "profiles",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "create_blank_profile",
+    "group": "profiles",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "mic_enabled",
+        "type": "bool",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "copy_profile",
+    "group": "profiles",
+    "read_only": false,
+    "params": [
+      {
+        "name": "source_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "rename_profile",
+    "group": "profiles",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "new_name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "delete_profile",
+    "group": "profiles",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "route_app_to_channel",
+    "group": "routing",
+    "read_only": false,
+    "params": [
+      {
+        "name": "stream_index",
+        "type": "u32",
+        "required": true
+      },
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "route_app_group_to_channel",
+    "group": "routing",
+    "read_only": false,
+    "params": [
+      {
+        "name": "stream_indices",
+        "type": "Vec<u32>",
+        "required": true
+      },
+      {
+        "name": "identities",
+        "type": "Vec<AppIdentity>",
+        "required": true
+      },
+      {
+        "name": "desktop_id",
+        "type": "Option<String>",
+        "required": false
+      },
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_channel_volume",
+    "group": "routing",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "volume",
+        "type": "u8",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "toggle_channel_mute",
+    "group": "routing",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "muted",
+        "type": "bool",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_channel_stream_volume",
+    "group": "routing",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "volume",
+        "type": "u8",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "toggle_channel_stream_mute",
+    "group": "routing",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "muted",
+        "type": "bool",
+        "required": true
+      },
+      {
+        "name": "expected_profile",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "set_monitor",
+    "group": "routing",
+    "read_only": false,
+    "params": [
+      {
+        "name": "sink_name",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "rename_app",
+    "group": "routing",
+    "read_only": false,
+    "params": [
+      {
+        "name": "match_prop",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "match_value",
+        "type": "String",
+        "required": true
+      },
+      {
+        "name": "alias",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "set_app_volume",
+    "group": "routing",
+    "read_only": false,
+    "params": [
+      {
+        "name": "stream_index",
+        "type": "u32",
+        "required": true
+      },
+      {
+        "name": "volume",
+        "type": "u8",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "get_backend_info",
+    "group": "settings",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "get_prefs",
+    "group": "settings",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "set_device_label_style",
+    "group": "settings",
+    "read_only": false,
+    "params": [
+      {
+        "name": "style",
+        "type": "DeviceLabelStyle",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "set_meter_mode",
+    "group": "settings",
+    "read_only": false,
+    "params": [
+      {
+        "name": "mode",
+        "type": "MeterMode",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "set_multiple_mics",
+    "group": "settings",
+    "read_only": false,
+    "params": [
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "set_balance_visible",
+    "group": "settings",
+    "read_only": false,
+    "params": [
+      {
+        "name": "visible",
+        "type": "bool",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "set_balance_channels",
+    "group": "settings",
+    "read_only": false,
+    "params": [
+      {
+        "name": "a",
+        "type": "Option<String>",
+        "required": false
+      },
+      {
+        "name": "b",
+        "type": "Option<String>",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "get_default_devices",
+    "group": "settings",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "set_default_output",
+    "group": "settings",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "set_default_input",
+    "group": "settings",
+    "read_only": false,
+    "params": [
+      {
+        "name": "name",
+        "type": "String",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "get_profile_automation",
+    "group": "profile_automation",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "save_profile_automation",
+    "group": "profile_automation",
+    "read_only": false,
+    "params": [
+      {
+        "name": "config",
+        "type": "ProfileAutomationConfig",
+        "required": true
+      }
+    ]
+  },
+  {
+    "method": "get_profile_automation_status",
+    "group": "profile_automation",
+    "read_only": true,
+    "params": []
+  },
+  {
+    "method": "list_running_applications",
+    "group": "profile_automation",
+    "read_only": true,
+    "params": []
+  }
+]

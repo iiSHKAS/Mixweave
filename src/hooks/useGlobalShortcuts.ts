@@ -65,6 +65,7 @@ function busDisplayLabel(bus: { name: string; label: string }): string {
  * after a first install, before GNOME has noticed the new extension, so
  * it's swallowed rather than surfaced as an app error. */
 export function showOsd(payload: ShortcutOsdPayload) {
+  if (!useMixerStore.getState().overlayEnabled) return;
   void emit("shortcut-osd", payload);
   if (lastDetectedBackend === "gnome_wayland") {
     void invoke("show_gnome_osd", {
@@ -189,6 +190,34 @@ export function useGlobalShortcuts() {
   const enabled = useShortcutSettings((state) => state.enabled);
   const bindings = useShortcutSettings((state) => state.bindings);
   const channelBindings = useChannelShortcuts((state) => state.byChannel);
+
+  // API changes use the same OSD path, independently of shortcut enablement.
+  // Backend values are already validated and committed; no stale store read.
+  useEffect(() => {
+    let disposed = false;
+    const backend = invoke<ShortcutBackend>("detect_shortcut_backend").catch(
+      (): ShortcutBackend => "unsupported",
+    );
+    type ApiOsdPayload = ShortcutOsdPayload & { id: string | null; stream: boolean };
+    const unlisten = listen<ApiOsdPayload>("local-api-osd", (event) => {
+      void backend.then((detected) => {
+        if (disposed) return;
+        lastDetectedBackend = detected;
+        const notice = event.payload;
+        const baseLabel = notice.id === MASTER_BUS
+          ? currentTranslation("mixer.group.master") : notice.label;
+        const label = notice.stream
+          ? `${baseLabel} • ${currentTranslation("streamer.stream")}` : baseLabel;
+        const max = notice.id && notice.volumePercent <= 100
+          ? getVolumeCeiling(notice.id, notice.max) : notice.max;
+        showOsd({ label, volumePercent: notice.volumePercent, max, muted: notice.muted });
+      });
+    });
+    return () => {
+      disposed = true;
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
 
   // GNOME re-invokes our own binary from a system-wide keybinding; the
   // running instance receives that as a "mixweave://shortcut" event (see

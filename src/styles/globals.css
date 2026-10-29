@@ -1795,58 +1795,37 @@ body,
 .fader-handle {
   position: absolute;
   left: 50%;
-  width: 34px;
-  height: 20px;
+  /* Slim console cap; the centre indicator stays aligned with the value.
+     Its 18px half-height fits within the stage's existing outer spacing. */
+  width: 24px;
+  height: 36px;
   transform: translate(-50%, 50%);
-  border-radius: 6px;
-  border: 1px solid #8E949B;
-  background: linear-gradient(#E0E2E4, #C9CDD1);
-  box-shadow: inset 0 1px 0 #FFFFFF99, 0 3px 5px #2228314F, 0 1px 1px #22222233;
+  border-radius: 5px;
+  border: 1px solid #90979F;
+  background:
+    linear-gradient(90deg, #FFFFFF66, transparent 18%, #FFFFFF20 48%, #0000000D 80%, #FFFFFF50),
+    linear-gradient(180deg, #F0F2F3 0%, #CBD0D5 12%, #E1E4E7 44%, #B5BDC5 51%, #D5DADE 88%, #A6AFB8 100%);
+  box-shadow: inset 0 1px 0 #FFFFFFCC, inset 0 -1px 0 #65707B66, 0 3px 5px #22283155, 0 1px 2px #22222240;
   display: grid;
   place-items: center;
-  transition: bottom 90ms linear, background 200ms, box-shadow 200ms;
+  transition: bottom 90ms linear, filter 150ms, box-shadow 150ms;
 }
 .fader-interact.dragging .fader-handle {
-  transition: background 200ms, box-shadow 200ms;
+  transition: filter 150ms, box-shadow 150ms;
 }
 .fader-interact:hover .fader-handle,
 .fader-interact:focus-visible .fader-handle,
 .fader-interact.dragging .fader-handle {
-  background: linear-gradient(#ECEEEF, #D8DCE0);
-  box-shadow: inset 0 1px 0 #FFFFFF99, 0 4px 8px #22283150;
+  filter: brightness(1.08);
+  box-shadow: inset 0 1px 0 #FFFFFFCC, inset 0 -1px 0 #65707B66, 0 4px 7px #22283166;
 }
 .fader-handle-groove {
-  width: 18px;
-  height: 2px;
-  border-radius: 2px;
-  background: #E5784B;
-  box-shadow: 0 1px 0 #F8D5C4;
-}
-/* Muted: an X-marked handle in place of the ordinary groove line. */
-.strip.muted .fader-handle {
-  background: #54363F;
-  border-color: #D95D6C;
-  box-shadow: inset 0 1px 0 #ffffff15, 0 3px 6px #00000030;
-}
-.strip.muted .fader-handle-groove {
-  display: none;
-}
-.strip.muted .fader-handle::before,
-.strip.muted .fader-handle::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
   width: 16px;
-  height: 2px;
+  height: 3px;
   border-radius: 2px;
-  background: #EE6575;
-}
-.strip.muted .fader-handle::before {
-  transform: translate(-50%, -50%) rotate(-38deg);
-}
-.strip.muted .fader-handle::after {
-  transform: translate(-50%, -50%) rotate(38deg);
+  background: #F47B46;
+  box-shadow: 0 0 0 1px #87411E50, 0 1px 0 #FFFFFFB3;
+  pointer-events: none;
 }
 
 /* meter */
@@ -2421,31 +2400,6 @@ body,
 .lane.muted .fader-stage::after {
   opacity: 1;
   transform: scaleY(1);
-}
-.lane.muted .fader-handle {
-  background: #54363F;
-  border-color: #D95D6C;
-  box-shadow: inset 0 1px 0 #ffffff15, 0 3px 6px #00000030;
-}
-.lane.muted .fader-handle-groove {
-  display: none;
-}
-.lane.muted .fader-handle::before,
-.lane.muted .fader-handle::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 16px;
-  height: 2px;
-  border-radius: 2px;
-  background: #EE6575;
-}
-.lane.muted .fader-handle::before {
-  transform: translate(-50%, -50%) rotate(-38deg);
-}
-.lane.muted .fader-handle::after {
-  transform: translate(-50%, -50%) rotate(38deg);
 }
 /* ---------- Application drag ghost (shared MixerBoard drag instance) ---------- */
 .drag-ghost {
@@ -5894,19 +5848,20 @@ body.dragging-app {
   border-color: #515A66;
 }
 :root[data-theme="dark"] .fader-handle {
-  background: linear-gradient(#65707D, #46515E);
-  border-color: #8793A3;
-  box-shadow: inset 0 1px 0 #ffffff25, 0 3px 6px #00000066;
+  background:
+    linear-gradient(90deg, #FFFFFF55, transparent 18%, #FFFFFF18 48%, #00000018 80%, #FFFFFF40),
+    linear-gradient(180deg, #CED4DA 0%, #919DA8 12%, #BAC2C9 44%, #7D8995 51%, #A4AFB9 88%, #697683 100%);
+  border-color: #A2ADB8;
+  box-shadow: inset 0 1px 0 #FFFFFF99, inset 0 -1px 0 #34404C99, 0 3px 6px #00000080;
 }
 :root[data-theme="dark"] .fader-interact:hover .fader-handle,
 :root[data-theme="dark"] .fader-interact:focus-visible .fader-handle,
 :root[data-theme="dark"] .fader-interact.dragging .fader-handle {
-  background: linear-gradient(#778391, #566371);
-  box-shadow: inset 0 1px 0 #ffffff30, 0 4px 8px #00000066;
+  box-shadow: inset 0 1px 0 #FFFFFFB3, inset 0 -1px 0 #34404C99, 0 4px 8px #00000080;
 }
 :root[data-theme="dark"] .fader-handle-groove {
-  background: #FFAB86;
-  box-shadow: 0 1px 0 #352A24;
+  background: #FF995F;
+  box-shadow: 0 0 0 1px #673A2466, 0 1px 0 #FFFFFF99;
 }
 :root[data-theme="dark"] .fader-interact:focus-visible {
   outline-color: #FF9B72;
@@ -6031,31 +5986,6 @@ body.dragging-app {
 :root[data-theme="dark"] .strip.muted .fader-stage::after {
   opacity: 1;
   transform: scaleY(1);
-}
-:root[data-theme="dark"] .strip.muted .fader-handle {
-  background: #54363F;
-  border-color: #D95D6C;
-  box-shadow: inset 0 1px 0 #ffffff15, 0 3px 6px #00000030;
-}
-:root[data-theme="dark"] .strip.muted .fader-handle-groove {
-  display: none;
-}
-:root[data-theme="dark"] .strip.muted .fader-handle::before,
-:root[data-theme="dark"] .strip.muted .fader-handle::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 16px;
-  height: 2px;
-  border-radius: 2px;
-  background: #EE6575;
-}
-:root[data-theme="dark"] .strip.muted .fader-handle::before {
-  transform: translate(-50%, -50%) rotate(-38deg);
-}
-:root[data-theme="dark"] .strip.muted .fader-handle::after {
-  transform: translate(-50%, -50%) rotate(38deg);
 }
 :root[data-theme="dark"] .sbtn.on-mute {
   background: #EE6575;

@@ -341,6 +341,7 @@ pub fn rename_bus(
 /// other end while this is off. Persisted, so the state survives a restart.
 #[tauri::command]
 pub fn set_streamer_mode_enabled(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let _profile_operation = state.lock_profile_operation()?;
     let (def, all, prefs) = {
         let mixer = state.lock_mixer()?;
         let def = mixer

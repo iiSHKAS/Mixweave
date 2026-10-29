@@ -33,3 +33,10 @@ PROJECT_STATUS.md
 update-build.json
 قيتهب ابديت/release-files/
 قيتهب ابديت/__pycache__/
+
+# Python API console environment
+tools/api-panel/.venv*/
+**/__pycache__/
+
+# Local integration reports
+tools/api-panel/isolated-test-report.json

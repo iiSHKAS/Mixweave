@@ -552,6 +552,43 @@ pub fn set_balance_visible(state: State<'_, AppState>, visible: bool) -> Result<
     Ok(())
 }
 
+/// Show or hide the volume popup overlay.
+#[tauri::command]
+pub fn set_overlay_enabled(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let prefs = {
+        let mixer = state.lock_mixer()?;
+        let mut prefs = mixer.prefs.clone();
+        prefs.overlay_enabled = enabled;
+        prefs
+    };
+    prefs.save().map_err(|e| e.to_string())?;
+    state.lock_mixer()?.prefs = prefs;
+    Ok(())
+}
+
+/// Start or stop the local HTTP control API immediately.
+#[tauri::command]
+pub fn set_local_api_enabled(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let prefs = {
+        let mixer = state.lock_mixer()?;
+        let mut prefs = mixer.prefs.clone();
+        prefs.local_api_enabled = enabled;
+        prefs
+    };
+    prefs.save().map_err(|e| e.to_string())?;
+    state.lock_mixer()?.prefs = prefs;
+    if enabled {
+        crate::local_api::start(app);
+    } else {
+        crate::local_api::stop();
+    }
+    Ok(())
+}
+
 /// Pick the two channels the balance slider blends.
 #[tauri::command]
 pub fn set_balance_channels(
@@ -658,4 +695,25 @@ pub fn set_default_input(state: State<'_, AppState>, name: String) -> Result<(),
         .backend
         .set_default_input(&name)
         .map_err(|e| e.to_string())
+}
+
+/// Desktop-only: migrate legacy localStorage once, or persist one explicit toggle.
+#[tauri::command]
+pub fn sync_volume_ranges(
+    state: State<'_, AppState>,
+    legacy: Option<BTreeMap<String, bool>>,
+    id: Option<String>,
+    allowed: Option<bool>,
+) -> Result<BTreeMap<String, bool>, String> {
+    let _operation = state.lock_profile_operation()?;
+    let mut mixer = state.lock_mixer()?;
+    let mut prefs = mixer.prefs.clone();
+    let ranges = prefs.volume_range_overrides.get_or_insert_with(|| legacy.unwrap_or_default());
+    if let Some(id) = id {
+        ranges.insert(id, allowed.ok_or("allowed is required")?);
+    }
+    let result = ranges.clone();
+    prefs.save().map_err(|e| e.to_string())?;
+    mixer.prefs = prefs;
+    Ok(result)
 }

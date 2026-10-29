@@ -343,6 +343,12 @@ pub fn add_channel(
     let mut applied_buses = Vec::new();
     if state.backend_native {
         for bus in &next.buses.buses {
+            // The disabled Streamer mix has a persisted definition but no live node.
+            if crate::persistence::buses::is_streamer_mode(&bus.name)
+                && !prefs.streamer_mode_enabled
+            {
+                continue;
+            }
             if let Err(error) = state
                 .backend
                 .set_bus_members(&bus.name, &bus.effective_members(&new_names))
@@ -689,7 +695,7 @@ pub fn remove_channel(
     // Build and persist a complete candidate before mutating PipeWire or
     // memory. If one of the multi-file writes fails, rewrite the previous
     // snapshot so a partial candidate cannot survive.
-    let (previous, next, next_channels, old_names, names) = {
+    let (previous, next, next_channels, old_names, names, prefs) = {
         let mixer = state.lock_mixer()?;
         let previous = PersistedChannelState {
             defs: mixer.channel_defs.clone(),
@@ -721,7 +727,14 @@ pub fn remove_channel(
             .iter()
             .map(|channel| channel.name.clone())
             .collect::<Vec<_>>();
-        (previous, next, next_channels, old_names, names)
+        (
+            previous,
+            next,
+            next_channels,
+            old_names,
+            names,
+            mixer.prefs.clone(),
+        )
     };
     if let Err(error) = next.save() {
         return Err(persistence_error_with_restore(error, &previous));
@@ -761,6 +774,12 @@ pub fn remove_channel(
     let mut applied_buses = Vec::new();
     if state.backend_native {
         for bus in &next.buses.buses {
+            // The disabled Streamer mix has a persisted definition but no live node.
+            if crate::persistence::buses::is_streamer_mode(&bus.name)
+                && !prefs.streamer_mode_enabled
+            {
+                continue;
+            }
             if let Err(error) = state
                 .backend
                 .set_bus_members(&bus.name, &bus.effective_members(&names))

@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import { MASTER_BUS, STREAMER_MODE_BUS } from "../types";
 
@@ -40,23 +41,29 @@ function save(overrides: Overrides) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
   } catch {
-    // Storage can be unavailable; the choice then lasts for this session only.
+    // The backend remains authoritative when the local cache is unavailable.
   }
 }
 
 interface VolumeRangeState {
   overrides: Overrides;
-  setAllowed: (id: string, allowed: boolean) => void;
+  setAllowed: (id: string, allowed: boolean) => Promise<void>;
 }
 
-export const useVolumeRange = create<VolumeRangeState>((set, get) => ({
+export const useVolumeRange = create<VolumeRangeState>((set) => ({
   overrides: load(),
-  setAllowed: (id, allowed) => {
-    const overrides = { ...get().overrides, [id]: allowed };
+  setAllowed: async (id, allowed) => {
+    const overrides = await invoke<Overrides>("sync_volume_ranges", { id, allowed });
     save(overrides);
     set({ overrides });
   },
 }));
+
+export async function initializeVolumeRanges() {
+  const overrides = await invoke<Overrides>("sync_volume_ranges", { legacy: load() });
+  save(overrides);
+  useVolumeRange.setState({ overrides });
+}
 
 /** The slider maximum for a strip: `hardMax` when amplification is allowed,
  * otherwise 100 %. */
@@ -70,21 +77,4 @@ export function useVolumeCeiling(id: string, hardMax: number): number {
 
 export function getVolumeCeiling(id: string, hardMax: number): number {
   return volumeCeiling(useVolumeRange.getState().overrides, id, hardMax);
-}
-
-/** A strip already running above 100 % (a setup saved before this option
- * existed, or a profile that was) keeps its slider range: allow amplification
- * on exactly those strips, unless the user has explicitly chosen otherwise.
- * Everything else defaults to 100 %. Safe to call on every state change. */
-export function allowBoostWhereInUse(strips: ReadonlyArray<{ id: string; levels: readonly number[] }>) {
-  const { overrides } = useVolumeRange.getState();
-  let next: Overrides | null = null;
-  for (const { id, levels } of strips) {
-    if (id in overrides || MASTER_STRIP_IDS.includes(id) || !levels.some((level) => level > UNITY_VOLUME)) continue;
-    next ??= { ...overrides };
-    next[id] = true;
-  }
-  if (!next) return;
-  save(next);
-  useVolumeRange.setState({ overrides: next });
 }
